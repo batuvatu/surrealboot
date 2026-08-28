@@ -106,4 +106,3 @@ surrealboot/
 - **USBLiter8** exploit by the original author
 - **SurrealBoot** by Validity (FogboundSloth25)
 - **surrealra1n** by pwnerblu
-- DFU helper, USB host active probing, Web Serial flasher & web tools by **batuvatu**
