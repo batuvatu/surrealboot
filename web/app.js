@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Download Base Firmware (.UF2) from GitHub Releases
     downloadBaseBtn.addEventListener('click', () => {
-        const releaseUrl = `https://github.com/BatuBey5G/surrealboot/releases/latest/download/usbliter8-bootsurreal-${selectedBoard}.uf2`;
+        const releaseUrl = `https://github.com/batuvatu/surrealboot/releases/latest/download/usbliter8-bootsurreal-${selectedBoard}.uf2`;
         
         // Trigger download
         const a = document.createElement('a');
