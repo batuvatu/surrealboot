@@ -17,7 +17,7 @@ When powered on, connect your iPhone to the board's USB host port with a Lightni
 | 🟣 **Solid Magenta** | **Recovery Detected** | **Hold Volume Down + Power**. (Board sends reboot at tick 2). |
 | 🔵 **Solid Cyan** | **Countdown (8s)** | **Release Power button**, keep holding Volume Down. |
 | ⚪ **Blinking White** | **DFU Transition** | **Release all buttons**. Device is entering DFU mode. |
-| 🔵 **Solid Blue** | **Exploit Running** | USBLiter8 checkm8 bootrom exploit executing. |
+| 🔵 **Solid Blue** | **Exploit Running** | usbliter8 bootrom exploit executing. |
 | 🟢 **Blinking Green** | **Streaming Payload** | Decompressing and transferring `iBSS.boot` to device memory. |
 | 🟢 **Solid Green** | **Boot Succeeded** | Payload executed — **iPhone boots!** |
 | 🔴 **Solid Red** | **Error** | Transfer or exploit failed. Unplug and reconnect to retry. |
