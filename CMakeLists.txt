@@ -18,6 +18,8 @@ add_executable(usbliter8
     usb.c
     exploit.c
     surreal_boot.c
+    dfu_helper.c
+    serial_flasher.c
     generated/bootfiles_data.c
 )
 pico_set_program_name(usbliter8 "usbliter8-bootsurreal")
@@ -35,6 +37,8 @@ target_link_libraries(usbliter8
     pico_stdlib
     pico_status_led
     hardware_pwm
+    hardware_flash
+    hardware_sync
     pio_usb
 )
 target_include_directories(usbliter8 PRIVATE ${CMAKE_SOURCE_DIR}/generated)

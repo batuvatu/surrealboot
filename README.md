@@ -8,22 +8,52 @@ Unlike the original workflow, this project does not require `usbliter8ctl` or a 
 
 The RP2350 acts as a complete USB host:
 
-1. Runs the USBLiter8 exploit.
-2. Waits until the Apple device enters PWNED DFU mode.
-3. Sends a pre-embedded `iBSS.boot` payload.
-4. Executes the payload automatically.
-5. Boots your surrealra1n downgraded device.
-
-The payload is stored directly inside the RP2350 firmware and embedded into the XIP flash using GNU assembler `.incbin`.
+1. **Detects** Recovery or DFU mode devices automatically.
+2. **Guides DFU entry** from Recovery mode using LED color cues (no computer needed).
+3. Runs the **USBLiter8 exploit**.
+4. Sends a pre-embedded `iBSS.boot` payload.
+5. Executes the payload and **boots your surrealra1n downgraded device**.
 
 ---
-# How it works
+
+## LED Guide
+
+| LED Color | Meaning |
+|-----------|---------|
+| 🟠 Orange blink | Initializing, please wait |
+| 🟠 Orange stable | Waiting for device |
+| 🟣 Magenta/Purple | **Hold Volume Down + Power buttons** |
+| 🔵 Cyan | **Release Power, keep holding Volume Down** |
+| ⚪ White blink | Waiting for DFU mode entry |
+| 🔵 Blue stable | Exploit in progress |
+| 🟢 Green blink | Sending boot payload |
+| 🟢 Green stable | Done! Device is booting |
+| 🔴 Red | Error |
+
+### DFU Entry Sequence
+
+If the card detects your device in **Recovery Mode** (iTunes/cable icon on screen):
+
+1. **Magenta** lights up — get ready, then **hold Volume Down + Power**
+2. The card automatically sends a reboot command at the precise timing
+3. **Cyan** lights up — **release Power**, keep holding Volume Down
+4. After 8 seconds, **white blink** = waiting for DFU
+5. Once DFU is detected, the exploit runs automatically
+
+If your device is already in **DFU Mode** (black screen), the card skips straight to the exploit.
+
+---
+
+## How it works
 
 ```
-Apple Device (DFU Mode)
+Apple Device (Recovery or DFU Mode)
           |
           v
 RP2350 USB Host
+          |
+          v
+[If Recovery] DFU Helper (LED-guided entry)
           |
           v
 USBLiter8 Exploit
@@ -38,186 +68,84 @@ LZ4 decompress embedded .boot
 DFU_DNLOAD payload transfer (0x80)
           |
           v
-Zero-length DFU_DNLOAD
+Zero-length DFU_DNLOAD → CUSTOM_BOOT → DFU_ABORT
           |
           v
-CUSTOM_BOOT request
-          |
-          v
-DFU_ABORT
-          |
-          v
-Payload execution
+Payload execution → Device boots!
 ```
 
 ---
 
-# Technical explanation
+## Building
 
-## 1. DFU mode
+### Supported systems
 
-The Apple device starts in normal DFU mode.
+- Fedora
+- Arch (CachyOS, etc.)
+- macOS (Intel and Apple Silicon)
+- Debian / Ubuntu
 
-At this point:
+### Build steps
 
-* SecureROM is running.
-* No arbitrary code execution is available.
-* Only Apple's DFU protocol is active.
+1. Place your `iBSS.boot` (from surrealra1n's `boot/` folder) into the `ibss/` directory.
 
-The RP2350 communicates with the device through USB.
-
----
-
-## 2. Exploitation
-
-The RP2350 runs the USBLiter8 exploit.
-
-The exploit targets Apple's SecureROM DFU implementation and allows execution control.
-
-After a successful exploit, the device enters:
-
-```
-PWNED DFU
-```
-
-PWNED DFU allows custom DFU commands and arbitrary payload loading.
-
----
-
-## 3. Payload transfer
-
-After entering PWNED DFU, BootSurreal sends the first embedded `*.boot` file from `ibss/`.
-
-The file is stored in firmware as LZ4-compressed 64 KiB blocks. Each block is decompressed on the RP2350, then sent over USB.
-
-The transfer uses:
-
-```
-DFU_DNLOAD
-```
-
-DFU commands:
-
-```
-DFU_DNLOAD  = 1
-DFU_ABORT   = 4
-CUSTOM_BOOT = 8
-```
-
-Decompressed payload bytes are split into USB control transfers of `0x80` bytes (falls back to `0x40` if a transfer fails).
-
-Example:
-
-```
-Payload chunk 0
-        |
-        v
-   DFU_DNLOAD
-
-Payload chunk 1
-        |
-        v
-   DFU_DNLOAD
-
-Payload chunk 2
-        |
-        v
-   DFU_DNLOAD
-```
-
-After all bytes are transferred:
-
-```
-DFU_DNLOAD(length=0)
-```
-
-is sent to finish the upload.
-
----
-
-## 4. Executing the payload
-
-After the upload is complete:
-
-```
-CUSTOM_BOOT
-```
-
-is sent.
-
-This requests that the device execute the uploaded payload.
-
-Then:
-
-```
-DFU_ABORT
-```
-
-is sent to clean up the DFU state.
-
-The firmware does not wait for a boot confirmation. If the transfer finished, the device is expected to leave DFU and run the payload.
-
----
-
-# Boot payload storage
-
-BootSurreal embeds `*.boot` files from `ibss/` into the firmware at build time (`tools/embed_bootfiles.py`, LZ4 blocks). At runtime only the first file is sent.
-
-Example structure:
-
-```
-ibss/
-└── iBSS.boot
-```
-
-Supported boards share one QSPI flash between firmware and the embedded payload (2 MB on Waveshare RP2350-USB-A, 4 MB on Pico 2). The `.boot` file is compiled into the UF2, not stored on a separate chip, so only one iBSS fits.
-
-The `.uf2` file is larger than the image on flash (UF2 stores 256 payload bytes per 512-byte block). Check used flash size from the build output, not from the UF2 file size.
----
-
-# Building uf2:
-
-Supported systems:
-
-```
-Fedora
-Arch (CachyOS, and etc supported too)
-MacOS (both intel and Apple Silicon)
-Debian, Ubuntu
-```
-
-Build:
-
-
-* Make sure your device is already downgraded and your iBSS.boot from surrealra1n/boot folder in the folder named "ibss"
-
+2. Run:
 ```bash
 ./build.sh
 ```
-After compiling, uf2 file will be in "dist" folder.
+
+3. The `.uf2` file will be in the `dist/` folder. Flash it to your Pico.
 
 The build script automatically:
-
-* Installs dependencies.
-* Downloads Pico SDK.
-* Downloads Arm GNU Toolchain.
-* Downloads required sources.
-* Builds the final UF2 firmware.
+- Installs dependencies
+- Downloads Pico SDK
+- Downloads ARM GNU Toolchain
+- Downloads USBLiter8 upstream source
+- Patches in DFU helper + boot payload support
+- Builds the final UF2 firmware
 
 ---
 
-# Supported boards
+## Web Flasher
 
-```
-waveshare_rp2350_usb_a
-waveshare_rp2350_zero (untested)
-pimoroni_tiny2350 (untested)
-pico2 (untested)
-```
+A static web-based tool is available in `web/` for generating UF2 files without building from source.
 
-# Current limitations
+### Usage
 
-* Can send only 0x80 per packet, so full payload transfer will take like 1 minute (or more, depends on your iBSS file size.).
-* Supported boards have 2–4 MB of flash (2 MB on Waveshare RP2350-USB-A).
-  One embedded `iBSS.boot` already fills most of that, so only a single
-  payload is supported. Put exactly one `*.boot` file in `ibss/`.
+1. Open `web/index.html` in a modern browser (or deploy to GitHub Pages)
+2. Select your board
+3. Upload your `iBSS.boot` file
+4. Optionally upload a pre-compiled base firmware `.uf2`
+5. Click "Generate & Download UF2"
+
+The web flasher compresses and packages everything client-side — no server required.
+
+---
+
+## Supported boards
+
+| Board | Status |
+|-------|--------|
+| waveshare_rp2350_usb_a | ✅ Tested |
+| waveshare_rp2350_zero | 🔲 Untested |
+| pimoroni_tiny2350 | 🔲 Untested |
+| pico2 | 🔲 Untested |
+
+> **Note:** Only RP2350-based boards are supported. RP2040 boards will NOT work.
+
+---
+
+## Current limitations
+
+- Payload transfer uses 0x80 byte chunks (PIO USB hardware limit). Full transfer takes ~60-80 seconds depending on iBSS size.
+- Supported boards have 2–4 MB of flash. One embedded `iBSS.boot` fills most of it, so only a single payload is supported.
+- DFU helper requires the device to be in Recovery mode first (shows iTunes/cable icon). Normal mode is not supported — put the device in Recovery mode manually first.
+
+---
+
+## Credits
+
+- **USBLiter8** exploit by the original author
+- **SurrealBoot** by Validity (FogboundSloth25)
+- **surrealra1n** by pwnerblu
+- DFU helper, speed optimizations, and web flasher by BatuBey5G

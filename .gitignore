@@ -1,0 +1,32 @@
+# Build outputs & temporary directories
+build/
+dist/
+.deps/
+ibss_backup/
+*.pdf
+*.uf2
+
+# Intermediate C / Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.o
+*.elf
+*.bin
+*.map
+
+# User-specific & editor files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Local temporary test payloads in ibss/ (keep dir, exclude private .boot files)
+ibss/*.boot
+ibss/*.ibss
+!ibss/.gitkeep
+
+# Temporary skills
+DESIGNSKILL_*.md
+

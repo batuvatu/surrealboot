@@ -30,7 +30,38 @@ files = sorted(
 )
 
 if not files:
-    raise SystemExit("No *.boot files found")
+    print("No *.boot files found — generating empty embedded payload tables (dynamic flash payload mode)")
+    c_content = """#include <stdint.h>
+#include "bootfiles_data.h"
+
+const struct bootfile_desc bootfiles[] = {};
+"""
+    h_content = """#pragma once
+
+#include <stdint.h>
+
+struct bootfile_chunk {
+    const uint8_t *start;
+    const uint8_t *end;
+    uint32_t compressed_size;
+    uint32_t uncompressed_size;
+};
+
+struct bootfile_desc {
+    const char *name;
+    const struct bootfile_chunk *chunks;
+    uint16_t chunk_count;
+    uint32_t uncompressed_size;
+};
+
+extern const struct bootfile_desc bootfiles[];
+
+#define BOOTFILE_COUNT 0
+"""
+    out_c.parent.mkdir(parents=True, exist_ok=True)
+    out_c.write_text(c_content)
+    out_h.write_text(h_content)
+    sys.exit(0)
 
 records = []
 

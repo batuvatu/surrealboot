@@ -517,6 +517,7 @@ mkdir -p "$SRC"
 cp -a "$UPSTREAM_CACHE/." "$SRC/"
 
 # Directly continue to payload when device is already PWNED.
+# Also make Recovery mode devices return -2 (retry) instead of -1 (fatal).
 python3 - "$SRC/exploit.c" <<'PYEXPLOIT'
 from pathlib import Path
 import sys
@@ -524,6 +525,7 @@ import sys
 p = Path(sys.argv[1])
 s = p.read_text()
 
+# --- Patch 1: already-PWNED returns 1 (proceed to payload) ---
 old = """    if (pwnd) {
         INFO("already PWNED!");
         return -2;
@@ -539,14 +541,50 @@ new = """    if (pwnd) {
 if old not in s:
     raise SystemExit("Could not find PWNED block in exploit.c")
 
-p.write_text(s.replace(old, new, 1))
+s = s.replace(old, new, 1)
+
+# --- Patch 2: Recovery mode devices return -2 (retry) instead of -1 (fatal) ---
+# Original code:
+#   if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227) {
+#       INFO("VID:0x%04X PID:0x%04X is not an Apple DFU device", ...);
+#       return -1;
+#   }
+#
+# Replace with a check that returns -2 for Recovery mode (retry/skip)
+# so the exploit loop treats it as "no device yet" rather than fatal.
+
+old_vid = '''    if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227) {
+        INFO("VID:0x%04X PID:0x%04X is not an Apple DFU device", dev_desc.idVendor, dev_desc.idProduct);
+        return -1;
+    }'''
+
+new_vid = '''    if (dev_desc.idVendor == 0x5AC &&
+        dev_desc.idProduct >= 0x1280 && dev_desc.idProduct <= 0x1283) {
+        INFO("Apple Recovery device detected (PID=0x%04X), triggering DFU helper", dev_desc.idProduct);
+        return -3;
+    }
+    if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227) {
+        /* Non-DFU or non-Apple device: return -2 so main loop retries cleanly without fatal red */
+        return -2;
+    }'''
+
+if old_vid not in s:
+    raise SystemExit("Could not find VID/PID check in exploit.c")
+
+s = s.replace(old_vid, new_vid, 1)
+
+p.write_text(s)
 PYEXPLOIT
 
 
 # Replace/add our custom files.
-cp "$ROOT/CMakeLists.txt" "$SRC/CMakeLists.txt"
-cp "$ROOT/surreal_boot.c" "$SRC/surreal_boot.c"
-cp "$ROOT/surreal_boot.h" "$SRC/surreal_boot.h"
+cp "$ROOT/CMakeLists.txt"   "$SRC/CMakeLists.txt"
+cp "$ROOT/surreal_boot.c"   "$SRC/surreal_boot.c"
+cp "$ROOT/surreal_boot.h"   "$SRC/surreal_boot.h"
+cp "$ROOT/dfu_helper.c"     "$SRC/dfu_helper.c"
+cp "$ROOT/dfu_helper.h"     "$SRC/dfu_helper.h"
+cp "$ROOT/serial_flasher.c" "$SRC/serial_flasher.c"
+cp "$ROOT/serial_flasher.h" "$SRC/serial_flasher.h"
 
 # ============================================================
 # Patch LED states
@@ -561,6 +599,9 @@ cp "$ROOT/surreal_boot.h" "$SRC/surreal_boot.h"
 # Add:
 #   BOOT_PAYLOAD
 #   BOOT_SUCCESS
+#   DFU_HOLD_BUTTONS   (magenta/purple)
+#   DFU_RELEASE_POWER  (cyan)
+#   DFU_WAITING        (white blink)
 # ============================================================
 
 info "Patching LED states"
@@ -581,7 +622,10 @@ if "LED_STATE_BOOT_PAYLOAD" not in h:
     new = """    LED_STATE_SUCCESS,
     LED_STATE_ERROR,
     LED_STATE_BOOT_PAYLOAD,
-    LED_STATE_BOOT_SUCCESS
+    LED_STATE_BOOT_SUCCESS,
+    LED_STATE_DFU_HOLD_BUTTONS,
+    LED_STATE_DFU_RELEASE_POWER,
+    LED_STATE_DFU_WAITING
 """
     if old not in h:
         raise SystemExit("Could not find LED state enum")
@@ -623,17 +667,109 @@ if "case LED_STATE_BOOT_PAYLOAD" not in c:
 
     c = c.replace(old, new, 1)
 
+# ---- Add DFU helper LED colours ----
+
+# Define new colours (MAGENTA, CYAN, WHITE) alongside existing ones.
+# NeoPixel path:
+neo_anchor = "#define RED"
+if neo_anchor in c and "MAGENTA" not in c:
+    # Find the RED define line in the NeoPixel section
+    red_line_neo = None
+    for line in c.splitlines():
+        if line.strip().startswith("#define RED") and "NEOPIXEL_RGB" in line:
+            red_line_neo = line
+            break
+
+    if red_line_neo:
+        c = c.replace(
+            red_line_neo,
+            red_line_neo + "\n"
+            "#define MAGENTA     NEOPIXEL_RGB(18, 0, 18)\n"
+            "#define CYAN        NEOPIXEL_RGB(0, 10, 18)\n"
+            "#define WHITE       NEOPIXEL_RGB(10, 10, 10)",
+            1
+        )
+
+# PWM path:
+for line in c.splitlines():
+    if line.strip().startswith("#define RED") and "PWM_RGB" in line:
+        red_line_pwm = line
+        if "MAGENTA" not in c or "PWM_RGB" not in c.split(red_line_pwm, 1)[-1][:200]:
+            c = c.replace(
+                red_line_pwm,
+                red_line_pwm + "\n"
+                "#define MAGENTA     PWM_RGB(120, 0, 120)\n"
+                "#define CYAN        PWM_RGB(0, 120, 120)\n"
+                "#define WHITE       PWM_RGB(100, 100, 100)",
+                1
+            )
+        break
+
+# Add DFU helper state cases to led_set_state().
+# Insert after BOOT_SUCCESS case.
+boot_success_block = """        case LED_STATE_BOOT_SUCCESS: {
+            led_set_color(GREEN);
+            led_set_blinking(0);
+            break;
+        }
+"""
+
+dfu_led_states = """        case LED_STATE_BOOT_SUCCESS: {
+            led_set_color(GREEN);
+            led_set_blinking(0);
+            break;
+        }
+
+        case LED_STATE_DFU_HOLD_BUTTONS: {
+            led_set_color(MAGENTA);
+            led_set_blinking(0);
+            break;
+        }
+
+        case LED_STATE_DFU_RELEASE_POWER: {
+            led_set_color(CYAN);
+            led_set_blinking(0);
+            break;
+        }
+
+        case LED_STATE_DFU_WAITING: {
+            led_set_color(WHITE);
+            led_set_blinking(200);
+            break;
+        }
+"""
+
+if boot_success_block in c and "LED_STATE_DFU_HOLD_BUTTONS" not in c:
+    c = c.replace(boot_success_block, dfu_led_states, 1)
+
 source.write_text(c)
 PYLED
 
 # ============================================================
+# Patch usb.h and usb.c for non-blocking device detection
+# ============================================================
+
+info "Patching usb.h and usb.c for non-blocking connection polling"
+
+python3 - "$SRC/usb.h" "$SRC/usb.c" <<'PYUSB'
+from pathlib import Path
+import sys
+
+h_path = Path(sys.argv[1])
+h_text = h_path.read_text()
+if 'usb_bus_is_connected' not in h_text:
+    h_text += '\nbool usb_bus_is_connected(void);\n'
+    h_path.write_text(h_text)
+
+c_path = Path(sys.argv[2])
+c_text = c_path.read_text()
+if 'usb_bus_is_connected' not in c_text:
+    c_text += '\nbool usb_bus_is_connected(void) {\n    return (gBus.root != NULL && gBus.root->connected);\n}\n'
+    c_path.write_text(c_text)
+PYUSB
+
+# ============================================================
 # Patch upstream main.c
-#
-# After exploit success:
-#   LED green
-#   send embedded bootfile
-#   blink green while sending
-#   steady green after success
 # ============================================================
 
 info "Patching USBLiter8 main runtime"
@@ -645,16 +781,54 @@ import sys
 path = Path(sys.argv[1])
 s = path.read_text()
 
+# --- Add includes ---
+
 if '#include "surreal_boot.h"' not in s:
     marker = '#include "log.h"'
     if marker not in s:
         raise SystemExit('Could not find log.h include')
     s = s.replace(
         marker,
-        marker + '\n#include "surreal_boot.h"',
+        marker + '\n#include "surreal_boot.h"\n#include "dfu_helper.h"\n#include "serial_flasher.h"',
         1
     )
 
+# --- Patch fatal_failure to keep servicing serial flasher ---
+old_fatal_spin = """    while (1) {
+        sleep_ms(100);
+    }"""
+
+new_fatal_spin = """    while (1) {
+        serial_flasher_check(100);
+        sleep_ms(100);
+    }"""
+
+if old_fatal_spin in s:
+    s = s.replace(old_fatal_spin, new_fatal_spin)
+
+# --- Patch do_auto for dynamic Recovery DFU helper and serial flasher ---
+old_auto = """void do_auto(void) {
+    while (true) {
+        int ret = exploit_run();"""
+
+new_auto = """void do_auto(void) {
+    while (true) {
+        serial_flasher_check(10);
+        int ret = exploit_run();
+
+        if (ret == -3) {
+            printf("[AUTO] Apple Recovery device detected -> launching DFU helper!\\n");
+            dfu_helper_run();
+            usb_bus_reset_open_ep0();
+            continue;
+        }"""
+
+if old_auto not in s:
+    raise SystemExit('Could not find do_auto() while loop in main.c')
+
+s = s.replace(old_auto, new_auto, 1)
+
+# --- Patch exploit success to send boot payload ---
 old = """        /* it all went well then */
         break;
 """
@@ -684,11 +858,30 @@ new = """        /* exploit succeeded; now send embedded boot payload */
 """
 
 if old not in s:
-    raise SystemExit(
-        "Could not find exploit success point in main.c"
-    )
+    raise SystemExit("Could not find exploit success point in main.c")
 
 s = s.replace(old, new, 1)
+
+# --- Replace blocking main() loop with non-blocking polling ---
+old_main_tail = """    usb_start();
+    usb_bus_init();
+    usb_bus_wait_for_device();
+    usb_bus_reset_open_ep0();
+
+#if WITH_AUTO_MODE
+    do_auto();
+#else
+    do_shell();
+#endif"""
+
+new_main_tail = """    usb_start();
+    usb_bus_init();
+    usb_bus_reset_open_ep0();
+
+    do_auto();"""
+
+if old_main_tail in s:
+    s = s.replace(old_main_tail, new_main_tail, 1)
 
 path.write_text(s)
 PYMAIN
@@ -716,8 +909,10 @@ done < <(
 )
 
 if [[ "${#BOOTFILES[@]}" -eq 0 ]]; then
-    die "No .boot files found in ./ibss"
-fi
+    echo "Notice: No .boot files found in ./ibss"
+    echo "Building universal base firmware (will load payload dynamically from flash at 0x10040000)"
+    TOTAL_BYTES=0
+else
 
 TOTAL_BYTES=0
 
@@ -732,6 +927,7 @@ done
 
 echo
 echo "Total boot payload bytes: $TOTAL_BYTES"
+fi
 
 # ============================================================
 # Generate embedded payloads
