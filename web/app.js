@@ -127,7 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const inputBytes = new Uint8Array(arrayBuffer);
 
             log('Compressing 64KB blocks using in-browser LZ4...');
-            const compressed = window.compressBootFile(inputBytes);
+            const compressFn = window.compressBootFile || window.compressPayload;
+            if (typeof compressFn !== 'function') {
+                throw new Error("LZ4 compressor module not loaded");
+            }
+            const compressed = compressFn(inputBytes);
 
             compressedPayload = compressed;
             statCompSize.textContent = formatBytes(compressed.data.length);

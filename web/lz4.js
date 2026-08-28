@@ -194,4 +194,5 @@ function compressPayload(data, progressCallback) {
 }
 
 window.compressPayload = compressPayload;
+window.compressBootFile = compressPayload;
 window.lz4CompressBlock = lz4CompressBlock;
