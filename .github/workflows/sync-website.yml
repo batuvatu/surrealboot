@@ -1,0 +1,43 @@
+name: Sync Web Flasher to batuvatu.github.io
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "web/**"
+      - ".github/workflows/sync-website.yml"
+  workflow_dispatch:
+
+jobs:
+  sync-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout surrealboot repo
+        uses: actions/checkout@v4
+        with:
+          path: surrealboot
+
+      - name: Checkout batuvatu.github.io repo
+        uses: actions/checkout@v4
+        with:
+          repository: batuvatu/batuvatu.github.io
+          token: ${{ secrets.SYNC_TOKEN }}
+          path: batuvatu.github.io
+
+      - name: Copy web files to batuvatu.github.io
+        run: |
+          cd batuvatu.github.io
+          # Copy all files from web/ into root of batuvatu.github.io
+          cp -r ../surrealboot/web/* .
+          
+          # Check for changes
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Auto-sync web/ updates from surrealboot (commit: ${{ github.sha }})"
+            git push origin main
+            echo "Successfully synced and pushed web/ updates to batuvatu.github.io"
+          else
+            echo "No changes in web/ to sync."
+          fi
