@@ -1,8 +1,7 @@
-# SurrealBoot
+# surrealboot
+surrealboot is a standalone, on-the-go hardware tether-booter for Apple A12 and A13 devices powered by Raspberry Pi RP2350 microcontrollers.
 
-**SurrealBoot** is a standalone, on-the-go hardware tether-booter for Apple A12 and A13 devices powered by Raspberry Pi RP2350 microcontrollers.
-
-It embeds the **USBLiter8** checkm8 bootrom exploit, an autonomous LED-guided DFU helper, in-memory LZ4 decompression, and a high-speed USB payload streamer directly onto the microcontroller. Once flashed, you can boot tether-downgraded iPhones anywhere using just an RP2350 board and a power bank — **no computer required**.
+It embeds the usbliter0 bootrom exploit, an autonomous LED-guided DFU helper, in-memory LZ4 decompression, and a high-speed USB payload streamer directly onto the microcontroller. Once flashed, you can boot tether-downgraded iPhones anywhere using just an RP2350 board and a power source, whether it's a charger, the USB port on a car, even a power bank. **no computer required**.
 
 🌐 **Web Flasher & Setup Tool:** [https://batuvatu.github.io](https://batuvatu.github.io)
 
@@ -102,8 +101,7 @@ surrealboot/
 ---
 
 ## Credits
-
-- **USBLiter8** exploit by the original author
-- **SurrealBoot** by Validity (FogboundSloth25)
+or
+- **usbliter8** exploit by the original auth
+- **BootSurreal** by Validity (FogboundSloth25)
 - **surrealra1n** by pwnerblu
-- DFU helper, USB host active probing, Web Serial flasher & web tools by **batuvatu**
