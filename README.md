@@ -101,7 +101,6 @@ surrealboot/
 ---
 
 ## Credits
-or
-- **usbliter8** exploit by the original auth
+- **usbliter8** exploit
 - **BootSurreal** by Validity (FogboundSloth25)
 - **surrealra1n** by pwnerblu
