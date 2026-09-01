@@ -58,8 +58,8 @@ When powered on, connect your iPhone to the board's USB host port with a Lightni
 | :--- | :--- | :--- |
 | **Waveshare RP2350 USB-A** | ✅ Recommended (Plug & Play) | Onboard USB-A Female (GP12 / GP13) |
 | **Waveshare RP2350-Zero** | ✅ Supported | GP12 (DP) / GP13 (DM) |
-| **Pimoroni Tiny 2350** | ✅ Supported | GP16 (DP) / GP17 (DM) |
-| **Raspberry Pi Pico 2** | ✅ Supported | GP16 (DP) / GP17 (DM) |
+| **Pimoroni Tiny 2350** | ✅ Supported | GP12 (DP) / GP13 (DM) |
+| **Raspberry Pi Pico 2** | ✅ Supported | GP12 (DP) / GP13 (DM) |
 
 ---
 

@@ -7,6 +7,11 @@ if (NOT EXISTS ${BOARD_DEFINITION})
     set(BOARD_DEFINITION ${CMAKE_SOURCE_DIR}/boards/unknown.cmake)
 endif()
 include(${BOARD_DEFINITION} OPTIONAL)
+
+get_directory_property(defs COMPILE_DEFINITIONS)
+list(FILTER defs EXCLUDE REGEX "^PIO_USB_DP_PIN_DEFAULT=")
+set_property(DIRECTORY PROPERTY COMPILE_DEFINITIONS ${defs} PIO_USB_DP_PIN_DEFAULT=12)
+
 if (NOT DEFINED USBLITER8_ENABLE_SHELL)
     add_compile_definitions(WITH_AUTO_MODE=1)
 endif()
