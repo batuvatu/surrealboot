@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>surrealboot</title>
     <meta name="description" content="Standalone RP2350 tether booter for A12/A13 iPhones.">
-    <link rel="stylesheet" href="style.css?v=4.0.2">
+    <link rel="stylesheet" href="style.css?v=4.0.3">
 </head>
 <body>
 
@@ -25,8 +25,8 @@
 
             <h2>1. Base firmware</h2>
             <p>
-                Pick your board. If you haven't flashed it yet, hold <code>BOOTSEL</code>,
-                plug in, then drag the <code>.uf2</code> onto the <code>RPI-RP2</code> drive.
+                Pick your board. If you haven't flashed it yet, hold BOOTSEL,
+                plug in, then drag the .uf2 onto the RPI-RP2 drive.
             </p>
 
             <ul class="board-list">
@@ -63,13 +63,12 @@
 
             <h2>2. Flash payload</h2>
             <p>
-                Drop your <code>iBSS.boot</code> here — built with <code>surrealra1n</code>.
-                Compressed with LZ4 in-browser, written to <code>0x10020000</code> over USB Serial.
+                After downgrading your A12/A13 device with <a href="https://github.com/pwnerblu/surrealra1n" target="_blank" rel="noopener">surrealra1n</a>, find your iBSS.boot file from the boot folder and drag it here.
             </p>
 
             <div id="dropZone" class="dropzone">
                 <input type="file" id="fileInput" accept=".boot,.ibss,.bin" style="display:none">
-                Drop <code>iBSS.boot</code> here or <span class="pick">click to browse</span>
+                Drop iBSS.boot here or <span class="pick">click to browse</span>
             </div>
 
             <div id="fileInfoBox" class="file-info" style="display:none">

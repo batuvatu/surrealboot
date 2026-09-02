@@ -282,10 +282,9 @@ button.primary:hover:not(:disabled) {
 .blink { animation: blink 0.9s ease infinite; }
 @keyframes blink { 50% { opacity: 0.1; } }
 
-/* sidebar paragraphs */
-.sidebar p { margin-bottom: 16px; }
-.sidebar a { color: #aaa; text-underline-offset: 3px; }
-.sidebar a:hover { color: #eee; }
+/* paragraph links */
+p a { color: #aaa; text-decoration: underline; text-underline-offset: 3px; }
+p a:hover { color: #eee; }
 
 /* footer */
 footer {
