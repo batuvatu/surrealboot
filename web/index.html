@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>surrealboot</title>
     <meta name="description" content="Standalone RP2350 tether booter for A12/A13 iPhones.">
-    <link rel="stylesheet" href="style.css?v=4.0.3">
+    <link rel="stylesheet" href="style.css?v=4.0.4">
 </head>
 <body>
 
@@ -57,7 +57,6 @@
             </ul>
 
             <button id="downloadBaseBtn">Download base firmware (.uf2)</button>
-            <span class="hint" id="baseSizeHint">latest via GitHub Releases</span>
 
             <hr>
 
@@ -106,7 +105,8 @@
                 <li><span class="dot" style="background:#06b6d4"></span><span><strong>Cyan</strong> release Power, keep Vol Down ~8s.</span></li>
                 <li><span class="dot blink" style="background:#e5e5e5"></span><span><strong>Blinking White</strong> release all, waiting for DFU.</span></li>
                 <li><span class="dot" style="background:#3b82f6"></span><span><strong>Blue</strong> USBLiter8 exploit running.</span></li>
-                <li><span class="dot" style="background:#22c55e"></span><span><strong>Green</strong> done, iPhone booting.</span></li>
+                <li><span class="dot blink" style="background:#22c55e"></span><span><strong>Blinking Green</strong> device is booting. this will take some time (~1m)</span></li>
+                <li><span class="dot" style="background:#22c55e"></span><span><strong>Green</strong> done, iPhone booted.</span></li>
             </ul>
 
             <h2>Notes</h2>

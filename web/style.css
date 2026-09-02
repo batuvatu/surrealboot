@@ -102,14 +102,21 @@ hr {
 .board-list label {
     cursor: pointer;
     font-size: 13px;
-    color: #ccc;
+    color: #888;
     display: flex;
     align-items: baseline;
     gap: 8px;
+    transition: color 0.1s;
+}
+
+.board-list label:hover,
+.board-list label:has(input:checked),
+.board-list label.active {
+    color: #eee;
 }
 
 .board-list input[type=radio] {
-    accent-color: #ccc;
+    accent-color: #3b82f6;
     cursor: pointer;
     flex-shrink: 0;
 }

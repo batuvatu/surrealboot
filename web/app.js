@@ -10,7 +10,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // DOM Elements
     const boardOptions = document.querySelectorAll('.board-list li label');
     const downloadBaseBtn = document.getElementById('downloadBaseBtn');
-    const baseSizeHint = document.getElementById('baseSizeHint');
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const fileInfoBox = document.getElementById('fileInfoBox');
@@ -58,14 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 radio.checked = true;
                 selectedBoard = radio.value;
             }
-            updateBaseDownloadInfo();
         });
     });
-
-    function updateBaseDownloadInfo() {
-        baseSizeHint.textContent = 'v1.0.0 via GitHub Releases';
-    }
-    updateBaseDownloadInfo();
 
     // Download Base Firmware (.UF2) from GitHub Releases
     downloadBaseBtn.addEventListener('click', () => {
