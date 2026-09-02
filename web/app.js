@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const serialFlasher = new SurrealSerialFlasher();
 
     // DOM Elements
-    const boardOptions = document.querySelectorAll('.board-row');
+    const boardOptions = document.querySelectorAll('.board-list li label');
     const downloadBaseBtn = document.getElementById('downloadBaseBtn');
     const baseSizeHint = document.getElementById('baseSizeHint');
     const dropZone = document.getElementById('dropZone');
@@ -29,10 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check Web Serial Support
     if (!SurrealSerialFlasher.isSupported()) {
-        serialStatus.className = 'status-pill';
-        serialStatus.style.borderColor = '#ef4444';
-        serialStatus.style.color = '#ef4444';
-        serialStatus.innerHTML = '<span class="status-dot"></span> Web Serial Unsupported (Use Chrome/Edge)';
+        const warn = document.createElement('p');
+        warn.style.cssText = 'color:#e05555;font-size:12px;margin-top:8px';
+        warn.textContent = 'Web Serial not supported — use Chrome or Edge.';
+        flashSerialBtn.insertAdjacentElement('afterend', warn);
     }
 
     // Helper: Console Log
