@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>surrealboot — RP2350 tether booter</title>
     <meta name="description" content="Web flasher for surrealboot — a standalone RP2350 board that tether-boots A12/A13 iPhones without a computer.">
-    <link rel="stylesheet" href="style.css?v=1.0.2">
+    <link rel="stylesheet" href="style.css?v=2.0.0">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
 
     <header class="site-header">
         <div class="header-left">
-            <div class="terminal-prompt">$</div>
+            <div class="logo-mark">sb</div>
             <div>
                 <h1 class="site-title">surrealboot</h1>
                 <div class="site-tag">standalone A12/A13 tether booter · RP2350</div>
@@ -34,7 +34,7 @@
 
             <section class="panel">
                 <div class="panel-header">
-                    <span class="panel-tag">01</span>
+                    <span class="section-num">BOARD</span>
                     <h2>Pick your board &amp; grab the firmware</h2>
                 </div>
                 <div class="panel-body">
@@ -96,7 +96,7 @@
 
             <section class="panel">
                 <div class="panel-header">
-                    <span class="panel-tag">02</span>
+                    <span class="section-num">PAYLOAD</span>
                     <h2>Flash your iBSS payload</h2>
                 </div>
                 <div class="panel-body">
@@ -104,7 +104,6 @@
                         Drop in the <code>iBSS.boot</code> stitched payload for your device — usually built with <code>surrealra1n</code>. The page compresses it with LZ4 right in your browser and writes it to flash at <code>0x10020000</code> over USB Serial. Nothing leaves your machine.
                     </p>
 
-                    <!-- Drop Zone -->
                     <div id="dropZone" class="file-drop-box">
                         <input type="file" id="fileInput" accept=".boot,.ibss,.bin" style="display: none;">
                         <div class="drop-prompt">
@@ -113,7 +112,6 @@
                         </div>
                     </div>
 
-                    <!-- File Info (hidden until file picked) -->
                     <div id="fileInfoBox" class="file-info-box" style="display: none;">
                         <div class="file-header">
                             <div class="file-name-row">
@@ -142,14 +140,12 @@
                         </div>
                     </div>
 
-                    <!-- Flash button -->
                     <div class="flash-controls">
                         <button id="flashSerialBtn" class="btn btn-primary" disabled>
                             ⚡ Connect &amp; flash over Serial
                         </button>
                     </div>
 
-                    <!-- Progress & console -->
                     <div id="flashProgressBox" class="flash-progress-box" style="display: none;">
                         <div class="progress-header">
                             <span id="progressStateText" class="progress-state">Ready</span>
@@ -158,11 +154,8 @@
                         <div class="meter-bar">
                             <div id="meterFill" class="meter-fill" style="width: 0%;"></div>
                         </div>
-
                         <div class="console-box">
-                            <div class="console-top">
-                                <span>serial output · 115200 baud</span>
-                            </div>
+                            <div class="console-top">serial output · 115200 baud</div>
                             <pre id="consoleOutput" class="console-text">&gt; waiting for serial connection...</pre>
                         </div>
                     </div>
@@ -177,7 +170,7 @@
 
             <section class="panel">
                 <div class="panel-header">
-                    <span class="panel-tag">03</span>
+                    <span class="section-num">LED</span>
                     <h2>LED states</h2>
                 </div>
                 <div class="panel-body">
@@ -193,15 +186,13 @@
                                 <div class="led-sub">Idle, waiting for something to show up on USB.</div>
                             </div>
                         </li>
-
                         <li class="led-item">
                             <span class="led-dot led-magenta"></span>
                             <div class="led-text">
                                 <div class="led-title">Solid Magenta</div>
-                                <div class="led-sub">Recovery mode spotted. Hold <strong>Volume Down + Power</strong> now — the board injects its reboot packet on tick 2.</div>
+                                <div class="led-sub">Recovery mode spotted. Hold <strong>Volume Down + Power</strong> now — board injects its reboot packet on tick 2.</div>
                             </div>
                         </li>
-
                         <li class="led-item">
                             <span class="led-dot led-cyan"></span>
                             <div class="led-text">
@@ -209,7 +200,6 @@
                                 <div class="led-sub"><strong>Let go of Power</strong>, keep holding Volume Down for about 8 seconds.</div>
                             </div>
                         </li>
-
                         <li class="led-item">
                             <span class="led-dot led-white-blink"></span>
                             <div class="led-text">
@@ -217,7 +207,6 @@
                                 <div class="led-sub">Release everything. Waiting for DFU to enumerate.</div>
                             </div>
                         </li>
-
                         <li class="led-item">
                             <span class="led-dot led-blue"></span>
                             <div class="led-text">
@@ -225,7 +214,6 @@
                                 <div class="led-sub">USBLiter8 exploit is running.</div>
                             </div>
                         </li>
-
                         <li class="led-item">
                             <span class="led-dot led-green"></span>
                             <div class="led-text">
@@ -239,7 +227,7 @@
 
             <section class="panel">
                 <div class="panel-header">
-                    <span class="panel-tag">04</span>
+                    <span class="section-num">HW</span>
                     <h2>Hardware notes</h2>
                 </div>
                 <div class="panel-body">
@@ -247,18 +235,15 @@
                         <h4>Waveshare RP2350 USB-A</h4>
                         <p>The USB-A port feeds directly from VSYS (5V) and uses GP12/13 for data. The firmware handles the board's onboard R13 resistor automatically with active USB bus resets — no hardware mods needed.</p>
                     </div>
-
                     <div class="doc-entry">
                         <h4>Cables</h4>
                         <p>Any standard USB-A to Lightning cable between the board's host port and the iPhone works. Power the board itself via USB-C or the 5V pin.</p>
                     </div>
-
                     <div class="doc-entry">
                         <h4>Supported devices</h4>
                         <p>
                             <a href="https://github.com/pwnerblu/surrealra1n/wiki/Supported-Devices"
-                               target="_blank"
-                               rel="noopener">
+                               target="_blank" rel="noopener">
                                 Full device list on the surrealra1n wiki →
                             </a>
                         </p>
@@ -271,9 +256,7 @@
     </main>
 
     <footer class="site-footer">
-        <div>
-            <span>surrealboot</span> · part of the <strong>surrealra1n</strong> project
-        </div>
+        <div>surrealboot · part of the <strong>surrealra1n</strong> project</div>
         <div class="credits">
             by <strong>batuvatu</strong>, <strong>Validity (FogboundSloth25)</strong> &amp; <strong>pwnerblu</strong>
         </div>
