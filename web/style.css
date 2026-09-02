@@ -52,7 +52,7 @@ header a:hover { color: #ccc; }
 /* two column */
 .body {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 1fr 360px;
     gap: 64px;
     margin-top: 48px;
 }
