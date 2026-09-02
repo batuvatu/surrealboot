@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SurrealBoot — Standalone RP2350 Tether Booter</title>
-    <meta name="description" content="Web flasher and hardware setup tool for SurrealBoot: Autonomous usbliter8 tether-booter for Apple A12/A13 devices on RP2350 microcontrollers.">
-    <link rel="stylesheet" href="style.css?v=1.0.1">
+    <title>surrealboot — RP2350 tether booter</title>
+    <meta name="description" content="Web flasher for surrealboot — a standalone RP2350 board that tether-boots A12/A13 iPhones without a computer.">
+    <link rel="stylesheet" href="style.css?v=1.0.2">
 </head>
 <body>
 
 <div class="container">
 
-    <!-- Top Navigation / Header -->
     <header class="site-header">
         <div class="header-left">
             <div class="terminal-prompt">$</div>
             <div>
                 <h1 class="site-title">surrealboot</h1>
-                <div class="site-tag">usbliter8 A12/A13 tether booter for RP2350</div>
+                <div class="site-tag">standalone A12/A13 tether booter · RP2350</div>
             </div>
         </div>
         <div class="header-right">
@@ -28,21 +27,19 @@
         </div>
     </header>
 
-    <!-- Main Tool Workspace -->
     <main class="workspace-grid">
 
-        <!-- Column 1: Flasher & Setup -->
+        <!-- Left: flasher -->
         <div class="column-main">
 
-            <!-- Section 1: Board & Base Firmware -->
             <section class="panel">
                 <div class="panel-header">
                     <span class="panel-tag">01</span>
-                    <h2>Target Board & Base Firmware</h2>
+                    <h2>Pick your board &amp; grab the firmware</h2>
                 </div>
                 <div class="panel-body">
                     <p class="section-desc">
-                        Pick your board model. If you haven't flashed the base firmware yet, hold <code>BOOTSEL</code> on your board, plug it in, and copy the <code>.uf2</code> file to the <code>RPI-RP2</code> drive.
+                        Select your board below. If this is your first time, hold <code>BOOTSEL</code>, plug in the board, then drag the <code>.uf2</code> file onto the <code>RPI-RP2</code> drive that shows up.
                     </p>
 
                     <div class="board-selector">
@@ -53,7 +50,7 @@
                                     <span class="board-title">Waveshare RP2350 USB-A</span>
                                     <span class="pill-badge">Recommended</span>
                                 </div>
-                                <div class="board-specs">Built-in USB-A host port · GP12 (DP) / GP13 (DM)</div>
+                                <div class="board-specs">has a real USB-A port built in · GP12 (DP) / GP13 (DM)</div>
                             </div>
                         </label>
 
@@ -63,7 +60,7 @@
                                 <div class="board-title-row">
                                     <span class="board-title">Waveshare RP2350-Zero</span>
                                 </div>
-                                <div class="board-specs">Compact board · GP12 (DP) / GP13 (DM)</div>
+                                <div class="board-specs">tiny footprint · GP12 (DP) / GP13 (DM)</div>
                             </div>
                         </label>
 
@@ -73,7 +70,7 @@
                                 <div class="board-title-row">
                                     <span class="board-title">Pimoroni Tiny 2350</span>
                                 </div>
-                                <div class="board-specs">Castellated module · GP16 (DP) / GP17 (DM)</div>
+                                <div class="board-specs">castellated module · GP16 (DP) / GP17 (DM)</div>
                             </div>
                         </label>
 
@@ -83,41 +80,40 @@
                                 <div class="board-title-row">
                                     <span class="board-title">Raspberry Pi Pico 2</span>
                                 </div>
-                                <div class="board-specs">Standard Pico 2 form factor · GP16 (DP) / GP17 (DM)</div>
+                                <div class="board-specs">standard Pico 2 pinout · GP16 (DP) / GP17 (DM)</div>
                             </div>
                         </label>
                     </div>
 
                     <div class="action-bar">
                         <button id="downloadBaseBtn" class="btn btn-secondary">
-                            Download Base Firmware (.uf2)
+                            Download base firmware (.uf2)
                         </button>
                         <span id="baseSizeHint" class="meta-hint">123 KB UF2</span>
                     </div>
                 </div>
             </section>
 
-            <!-- Section 2: Payload Selection & Web Serial Flasher -->
             <section class="panel">
                 <div class="panel-header">
                     <span class="panel-tag">02</span>
-                    <h2>Flash Boot Payload (iBSS.boot)</h2>
+                    <h2>Flash your iBSS payload</h2>
                 </div>
                 <div class="panel-body">
                     <p class="section-desc">
-                        Provide the <code>iBSS.boot</code> stitched payload generated for your device (e.g. from <code>surrealra1n</code>). The tool compresses it in-browser with LZ4 and writes it to flash offset <code>0x10020000</code> over USB Serial.
+                        Drop in the <code>iBSS.boot</code> stitched payload for your device — usually built with <code>surrealra1n</code>. The page compresses it with LZ4 right in your browser and writes it to flash at <code>0x10020000</code> over USB Serial. Nothing leaves your machine.
                     </p>
 
                     <!-- Drop Zone -->
                     <div id="dropZone" class="file-drop-box">
                         <input type="file" id="fileInput" accept=".boot,.ibss,.bin" style="display: none;">
                         <div class="drop-prompt">
-                            <span class="drop-title">Select or drag & drop <code>iBSS.boot</code></span>
-                            <span class="drop-sub">Typically 2.0 – 2.8 MB raw payload</span>
+                            <span class="drop-title">Drop <code>iBSS.boot</code> here, or click to browse</span>
+                            <span class="drop-sub">raw payload, usually 2–2.8 MB</span>
                         </div>
                     </div>
 
-                    <!-- File Info & Compression Details (hidden until file picked) -->
+                    <!-- File Info (hidden until file picked) -->
                     <div id="fileInfoBox" class="file-info-box" style="display: none;">
                         <div class="file-header">
                             <div class="file-name-row">
@@ -140,20 +136,20 @@
                                 <div id="statRatio" class="stat-val">—</div>
                             </div>
                             <div class="stat-col">
-                                <div class="stat-lbl">FLASH DESTINATION</div>
+                                <div class="stat-lbl">WRITES TO</div>
                                 <div class="stat-val font-mono">0x10020000</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Flasher Control -->
+                    <!-- Flash button -->
                     <div class="flash-controls">
                         <button id="flashSerialBtn" class="btn btn-primary" disabled>
-                            ⚡ Connect & Flash Payload via Serial
+                            ⚡ Connect &amp; flash over Serial
                         </button>
                     </div>
 
-                    <!-- Progress & Live Terminal Output -->
+                    <!-- Progress & console -->
                     <div id="flashProgressBox" class="flash-progress-box" style="display: none;">
                         <div class="progress-header">
                             <span id="progressStateText" class="progress-state">Ready</span>
@@ -162,12 +158,12 @@
                         <div class="meter-bar">
                             <div id="meterFill" class="meter-fill" style="width: 0%;"></div>
                         </div>
-                        
+
                         <div class="console-box">
                             <div class="console-top">
-                                <span>SERIAL CONSOLE (115200 BAUD)</span>
+                                <span>serial output · 115200 baud</span>
                             </div>
-                            <pre id="consoleOutput" class="console-text">> Waiting for serial connection...</pre>
+                            <pre id="consoleOutput" class="console-text">&gt; waiting for serial connection...</pre>
                         </div>
                     </div>
 
@@ -176,18 +172,17 @@
 
         </div>
 
-        <!-- Column 2: Hardware Guide & Operating Instructions -->
+        <!-- Right: LED guide + hardware notes -->
         <div class="column-side">
 
-            <!-- Hardware Quick Reference -->
             <section class="panel">
                 <div class="panel-header">
                     <span class="panel-tag">03</span>
-                    <h2>LED Operating Guide</h2>
+                    <h2>LED states</h2>
                 </div>
                 <div class="panel-body">
                     <p class="section-desc">
-                        Once flashed, SurrealBoot runs standalone without a computer. Connect the RP2350 to power, plug in the iPhone, and follow the RGB LED states:
+                        Once flashed, the board runs completely on its own — no computer needed. Just power it up, plug in the iPhone, and watch the LED:
                     </p>
 
                     <ul class="led-guide-list">
@@ -195,15 +190,15 @@
                             <span class="led-dot led-orange"></span>
                             <div class="led-text">
                                 <div class="led-title">Solid Orange</div>
-                                <div class="led-sub">Idle / Listening for USB host connection.</div>
+                                <div class="led-sub">Idle, waiting for something to show up on USB.</div>
                             </div>
                         </li>
 
                         <li class="led-item">
                             <span class="led-dot led-magenta"></span>
                             <div class="led-text">
-                                <div class="led-title">Solid Magenta (Countdown)</div>
-                                <div class="led-sub">Recovery detected. <strong>Hold Volume Down + Power</strong>. Board injects reboot packet at tick 2.</div>
+                                <div class="led-title">Solid Magenta</div>
+                                <div class="led-sub">Recovery mode spotted. Hold <strong>Volume Down + Power</strong> now — the board injects its reboot packet on tick 2.</div>
                             </div>
                         </li>
 
@@ -211,7 +206,7 @@
                             <span class="led-dot led-cyan"></span>
                             <div class="led-text">
                                 <div class="led-title">Solid Cyan</div>
-                                <div class="led-sub"><strong>Release Power</strong>, keep holding Volume Down for 8s.</div>
+                                <div class="led-sub"><strong>Let go of Power</strong>, keep holding Volume Down for about 8 seconds.</div>
                             </div>
                         </li>
 
@@ -219,7 +214,7 @@
                             <span class="led-dot led-white-blink"></span>
                             <div class="led-text">
                                 <div class="led-title">Blinking White</div>
-                                <div class="led-sub">Release all buttons. Waiting for DFU enumeration.</div>
+                                <div class="led-sub">Release everything. Waiting for DFU to enumerate.</div>
                             </div>
                         </li>
 
@@ -227,7 +222,7 @@
                             <span class="led-dot led-blue"></span>
                             <div class="led-text">
                                 <div class="led-title">Solid Blue</div>
-                                <div class="led-sub">Running USBLiter8 exploit.</div>
+                                <div class="led-sub">USBLiter8 exploit is running.</div>
                             </div>
                         </li>
 
@@ -235,40 +230,39 @@
                             <span class="led-dot led-green"></span>
                             <div class="led-text">
                                 <div class="led-title">Solid Green</div>
-                                <div class="led-sub">Boot payload streamed to memory. iPhone boots!</div>
+                                <div class="led-sub">Payload uploaded, iPhone is booting. Done!</div>
                             </div>
                         </li>
                     </ul>
                 </div>
             </section>
 
-            <!-- Technical Notes & Wiring -->
             <section class="panel">
                 <div class="panel-header">
                     <span class="panel-tag">04</span>
-                    <h2>Hardware Notes</h2>
+                    <h2>Hardware notes</h2>
                 </div>
                 <div class="panel-body">
                     <div class="doc-entry">
                         <h4>Waveshare RP2350 USB-A</h4>
-                        <p>The USB-A female port is wired directly to VSYS for 5V power and GP12/13 for data. Our firmware automatically handles the board's onboard R13 resistor with active USB bus resets.</p>
+                        <p>The USB-A port feeds directly from VSYS (5V) and uses GP12/13 for data. The firmware handles the board's onboard R13 resistor automatically with active USB bus resets — no hardware mods needed.</p>
                     </div>
 
                     <div class="doc-entry">
-                        <h4>Cables & Connection</h4>
-                        <p>Use a standard USB-A to Lightning cable connected between the board's USB-A host port and the iPhone. Keep the board powered via USB-C or 5V pin.</p>
+                        <h4>Cables</h4>
+                        <p>Any standard USB-A to Lightning cable between the board's host port and the iPhone works. Power the board itself via USB-C or the 5V pin.</p>
                     </div>
 
                     <div class="doc-entry">
-                        <h4>Supported Hardware</h4>
-                            <p>
-                                <a href="https://github.com/pwnerblu/surrealra1n/wiki/Supported-Devices"
-                                   target="_blank"
-                                   rel="noopener">
-                                    View the supported devices wiki →
-                                </a>
-                            </p>
-                        </div>
+                        <h4>Supported devices</h4>
+                        <p>
+                            <a href="https://github.com/pwnerblu/surrealra1n/wiki/Supported-Devices"
+                               target="_blank"
+                               rel="noopener">
+                                Full device list on the surrealra1n wiki →
+                            </a>
+                        </p>
+                    </div>
                 </div>
             </section>
 
@@ -276,22 +270,20 @@
 
     </main>
 
-    <!-- Footer -->
     <footer class="site-footer">
         <div>
-            <span>SurrealBoot</span> · Built for the <strong>surrealra1n</strong> project.
+            <span>surrealboot</span> · part of the <strong>surrealra1n</strong> project
         </div>
         <div class="credits">
-            By <strong>batuvatu</strong>, <strong>Validity (FogboundSloth25)</strong> &amp; <strong>pwnerblu</strong>.
+            by <strong>batuvatu</strong>, <strong>Validity (FogboundSloth25)</strong> &amp; <strong>pwnerblu</strong>
         </div>
     </footer>
 
 </div>
 
-<!-- Scripts -->
-<script src="lz4.js?v=1.0.1"></script>
-<script src="serial.js?v=1.0.1"></script>
-<script src="app.js?v=1.0.1"></script>
+<script src="lz4.js?v=1.0.2"></script>
+<script src="serial.js?v=1.0.2"></script>
+<script src="app.js?v=1.0.2"></script>
 
 </body>
 </html>
