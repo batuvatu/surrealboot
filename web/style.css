@@ -257,15 +257,15 @@ button.primary:hover:not(:disabled) {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
 }
 
 .led-list li {
     font-size: 13px;
     color: #888;
-    display: grid;
-    grid-template-columns: 18px 1fr;
-    align-items: start;
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
     line-height: 1.5;
 }
 
@@ -276,8 +276,7 @@ button.primary:hover:not(:disabled) {
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
-    margin-top: 4px;
-    justify-self: center;
+    transform: translateY(-1px);
 }
 
 .blink { animation: blink 0.9s ease infinite; }
