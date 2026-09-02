@@ -3,263 +3,213 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>surrealboot — RP2350 tether booter</title>
-    <meta name="description" content="Web flasher for surrealboot — a standalone RP2350 board that tether-boots A12/A13 iPhones without a computer.">
-    <link rel="stylesheet" href="style.css?v=2.0.0">
+    <title>surrealboot</title>
+    <meta name="description" content="Standalone RP2350 tether booter for A12/A13 iPhones. Flash your iBSS payload over USB Serial, no computer required to run.">
+    <link rel="stylesheet" href="style.css?v=3.0.0">
 </head>
 <body>
 
-<div class="container">
+<div class="page">
 
-    <header class="site-header">
-        <div class="header-left">
-            <div class="logo-mark">sb</div>
-            <div>
-                <h1 class="site-title">surrealboot</h1>
-                <div class="site-tag">standalone A12/A13 tether booter · RP2350</div>
-            </div>
+    <header class="header">
+        <div>
+            <div class="header-name">surrealboot</div>
+            <div class="header-desc">standalone A12/A13 tether booter for RP2350</div>
         </div>
-        <div class="header-right">
-            <span id="serialStatus" class="status-pill status-ready">
-                <span class="status-dot"></span> Web Serial Ready
+        <div class="header-links">
+            <span class="serial-state" id="serialStatus">
+                <span class="serial-dot"></span>
+                Web Serial ready
             </span>
-            <a href="https://github.com/batuvatu/surrealboot" target="_blank" rel="noopener" class="gh-link">GitHub ↗</a>
+            <a class="gh-btn" href="https://github.com/batuvatu/surrealboot" target="_blank" rel="noopener">GitHub ↗</a>
         </div>
     </header>
 
-    <main class="workspace-grid">
+    <div class="body">
 
-        <!-- Left: flasher -->
-        <div class="column-main">
+        <!-- Left column: the actual flasher -->
+        <div class="main">
 
-            <section class="panel">
-                <div class="panel-header">
-                    <span class="section-num">BOARD</span>
-                    <h2>Pick your board &amp; grab the firmware</h2>
+            <!-- Step 1: board -->
+            <div class="step">
+                <div class="section-label">Step 1 — Base firmware</div>
+                <p class="step-hint">
+                    Pick your board. If you haven't flashed the base firmware yet, hold <code>BOOTSEL</code>,
+                    plug in the board, and copy the <code>.uf2</code> to the <code>RPI-RP2</code> drive.
+                </p>
+
+                <div class="boards">
+                    <label class="board-row active">
+                        <input type="radio" name="board" value="waveshare_rp2350_usb_a" checked>
+                        <span class="board-name">Waveshare RP2350 USB-A</span>
+                        <span class="rec-tag">recommended</span>
+                        <span class="board-pins">GP12/13</span>
+                    </label>
+                    <label class="board-row">
+                        <input type="radio" name="board" value="waveshare_rp2350_zero">
+                        <span class="board-name">Waveshare RP2350-Zero</span>
+                        <span class="board-pins">GP12/13</span>
+                    </label>
+                    <label class="board-row">
+                        <input type="radio" name="board" value="pimoroni_tiny2350">
+                        <span class="board-name">Pimoroni Tiny 2350</span>
+                        <span class="board-pins">GP16/17</span>
+                    </label>
+                    <label class="board-row">
+                        <input type="radio" name="board" value="pico2">
+                        <span class="board-name">Raspberry Pi Pico 2</span>
+                        <span class="board-pins">GP16/17</span>
+                    </label>
                 </div>
-                <div class="panel-body">
-                    <p class="section-desc">
-                        Select your board below. If this is your first time, hold <code>BOOTSEL</code>, plug in the board, then drag the <code>.uf2</code> file onto the <code>RPI-RP2</code> drive that shows up.
-                    </p>
 
-                    <div class="board-selector">
-                        <label class="board-option selected">
-                            <input type="radio" name="board" value="waveshare_rp2350_usb_a" checked>
-                            <div class="board-info">
-                                <div class="board-title-row">
-                                    <span class="board-title">Waveshare RP2350 USB-A</span>
-                                    <span class="pill-badge">Recommended</span>
-                                </div>
-                                <div class="board-specs">has a real USB-A port built in · GP12 (DP) / GP13 (DM)</div>
-                            </div>
-                        </label>
+                <button id="downloadBaseBtn" class="btn btn-default">
+                    Download base firmware (.uf2)
+                </button>
+                <span class="btn-hint" id="baseSizeHint">latest via GitHub Releases</span>
+            </div>
 
-                        <label class="board-option">
-                            <input type="radio" name="board" value="waveshare_rp2350_zero">
-                            <div class="board-info">
-                                <div class="board-title-row">
-                                    <span class="board-title">Waveshare RP2350-Zero</span>
-                                </div>
-                                <div class="board-specs">tiny footprint · GP12 (DP) / GP13 (DM)</div>
-                            </div>
-                        </label>
+            <div class="step-divider"></div>
 
-                        <label class="board-option">
-                            <input type="radio" name="board" value="pimoroni_tiny2350">
-                            <div class="board-info">
-                                <div class="board-title-row">
-                                    <span class="board-title">Pimoroni Tiny 2350</span>
-                                </div>
-                                <div class="board-specs">castellated module · GP16 (DP) / GP17 (DM)</div>
-                            </div>
-                        </label>
+            <!-- Step 2: payload -->
+            <div class="step">
+                <div class="section-label">Step 2 — Flash payload</div>
+                <p class="step-hint">
+                    Drop your <code>iBSS.boot</code> payload here — built with <code>surrealra1n</code>.
+                    It gets compressed with LZ4 in-browser and written to <code>0x10020000</code> over USB Serial.
+                    Nothing leaves your machine.
+                </p>
 
-                        <label class="board-option">
-                            <input type="radio" name="board" value="pico2">
-                            <div class="board-info">
-                                <div class="board-title-row">
-                                    <span class="board-title">Raspberry Pi Pico 2</span>
-                                </div>
-                                <div class="board-specs">standard Pico 2 pinout · GP16 (DP) / GP17 (DM)</div>
-                            </div>
-                        </label>
+                <div id="dropZone" class="dropzone">
+                    <input type="file" id="fileInput" accept=".boot,.ibss,.bin" style="display:none">
+                    <div class="dz-title">Drop <code>iBSS.boot</code> here or click to browse</div>
+                    <div class="dz-hint">raw payload · usually 2–2.8 MB</div>
+                </div>
+
+                <div id="fileInfoBox" class="file-loaded" style="display:none">
+                    <div class="file-row">
+                        <span class="file-name" id="loadedFileName">iBSS.boot</span>
+                        <button class="remove-btn" id="clearFileBtn">remove</button>
                     </div>
-
-                    <div class="action-bar">
-                        <button id="downloadBaseBtn" class="btn btn-secondary">
-                            Download base firmware (.uf2)
-                        </button>
-                        <span id="baseSizeHint" class="meta-hint">123 KB UF2</span>
+                    <div class="file-stats">
+                        <div class="stat">
+                            <span class="stat-key">raw</span>
+                            <span class="stat-val" id="statRawSize">—</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-key">lz4</span>
+                            <span class="stat-val" id="statCompSize">—</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-key">ratio</span>
+                            <span class="stat-val" id="statRatio">—</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-key">offset</span>
+                            <span class="stat-val">0x10020000</span>
+                        </div>
                     </div>
                 </div>
-            </section>
 
-            <section class="panel">
-                <div class="panel-header">
-                    <span class="section-num">PAYLOAD</span>
-                    <h2>Flash your iBSS payload</h2>
+                <button id="flashSerialBtn" class="btn btn-action" disabled>
+                    ⚡ Connect &amp; flash
+                </button>
+
+                <div id="flashProgressBox" class="progress-wrap" style="display:none">
+                    <div class="progress-row">
+                        <span class="progress-status" id="progressStateText">ready</span>
+                        <span class="progress-pct" id="progressPercentText">0%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" id="meterFill" style="width:0%"></div>
+                    </div>
+                    <div class="console">
+                        <div class="console-bar">serial · 115200</div>
+                        <pre class="console-out" id="consoleOutput">&gt; waiting for connection...</pre>
+                    </div>
                 </div>
-                <div class="panel-body">
-                    <p class="section-desc">
-                        Drop in the <code>iBSS.boot</code> stitched payload for your device — usually built with <code>surrealra1n</code>. The page compresses it with LZ4 right in your browser and writes it to flash at <code>0x10020000</code> over USB Serial. Nothing leaves your machine.
-                    </p>
-
-                    <div id="dropZone" class="file-drop-box">
-                        <input type="file" id="fileInput" accept=".boot,.ibss,.bin" style="display: none;">
-                        <div class="drop-prompt">
-                            <span class="drop-title">Drop <code>iBSS.boot</code> here, or click to browse</span>
-                            <span class="drop-sub">raw payload, usually 2–2.8 MB</span>
-                        </div>
-                    </div>
-
-                    <div id="fileInfoBox" class="file-info-box" style="display: none;">
-                        <div class="file-header">
-                            <div class="file-name-row">
-                                <span class="file-icon">📄</span>
-                                <span id="loadedFileName" class="file-name">iBSS.boot</span>
-                            </div>
-                            <button id="clearFileBtn" class="btn-text">Remove</button>
-                        </div>
-                        <div class="stats-table">
-                            <div class="stat-col">
-                                <div class="stat-lbl">RAW SIZE</div>
-                                <div id="statRawSize" class="stat-val">—</div>
-                            </div>
-                            <div class="stat-col">
-                                <div class="stat-lbl">COMPRESSED (LZ4)</div>
-                                <div id="statCompSize" class="stat-val">—</div>
-                            </div>
-                            <div class="stat-col">
-                                <div class="stat-lbl">RATIO</div>
-                                <div id="statRatio" class="stat-val">—</div>
-                            </div>
-                            <div class="stat-col">
-                                <div class="stat-lbl">WRITES TO</div>
-                                <div class="stat-val font-mono">0x10020000</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flash-controls">
-                        <button id="flashSerialBtn" class="btn btn-primary" disabled>
-                            ⚡ Connect &amp; flash over Serial
-                        </button>
-                    </div>
-
-                    <div id="flashProgressBox" class="flash-progress-box" style="display: none;">
-                        <div class="progress-header">
-                            <span id="progressStateText" class="progress-state">Ready</span>
-                            <span id="progressPercentText" class="progress-num">0%</span>
-                        </div>
-                        <div class="meter-bar">
-                            <div id="meterFill" class="meter-fill" style="width: 0%;"></div>
-                        </div>
-                        <div class="console-box">
-                            <div class="console-top">serial output · 115200 baud</div>
-                            <pre id="consoleOutput" class="console-text">&gt; waiting for serial connection...</pre>
-                        </div>
-                    </div>
-
-                </div>
-            </section>
+            </div>
 
         </div>
 
-        <!-- Right: LED guide + hardware notes -->
-        <div class="column-side">
+        <!-- Right column: reference -->
+        <div class="sidebar">
 
-            <section class="panel">
-                <div class="panel-header">
-                    <span class="section-num">LED</span>
-                    <h2>LED states</h2>
+            <div class="section-label">LED states</div>
+            <p class="step-hint" style="margin-bottom:20px">
+                Once flashed the board runs standalone — plug in power, connect the iPhone, done.
+            </p>
+
+            <div class="leds">
+                <div class="led-row">
+                    <span class="dot dot-orange"></span>
+                    <div>
+                        <div class="led-label">Solid Orange</div>
+                        <div class="led-desc">Idle, waiting for a USB device.</div>
+                    </div>
                 </div>
-                <div class="panel-body">
-                    <p class="section-desc">
-                        Once flashed, the board runs completely on its own — no computer needed. Just power it up, plug in the iPhone, and watch the LED:
+                <div class="led-row">
+                    <span class="dot dot-magenta"></span>
+                    <div>
+                        <div class="led-label">Solid Magenta</div>
+                        <div class="led-desc">Recovery mode detected — hold <strong>Vol Down + Power</strong>. Reboot packet fires at tick 2.</div>
+                    </div>
+                </div>
+                <div class="led-row">
+                    <span class="dot dot-cyan"></span>
+                    <div>
+                        <div class="led-label">Solid Cyan</div>
+                        <div class="led-desc">Release Power, keep holding Vol Down for ~8 seconds.</div>
+                    </div>
+                </div>
+                <div class="led-row">
+                    <span class="dot dot-white"></span>
+                    <div>
+                        <div class="led-label">Blinking White</div>
+                        <div class="led-desc">Let go of everything. Waiting for DFU.</div>
+                    </div>
+                </div>
+                <div class="led-row">
+                    <span class="dot dot-blue"></span>
+                    <div>
+                        <div class="led-label">Solid Blue</div>
+                        <div class="led-desc">USBLiter8 exploit running.</div>
+                    </div>
+                </div>
+                <div class="led-row">
+                    <span class="dot dot-green"></span>
+                    <div>
+                        <div class="led-label">Solid Green</div>
+                        <div class="led-desc">Done — payload sent, iPhone booting.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="notes">
+                <div>
+                    <div class="note-title">Waveshare RP2350 USB-A</div>
+                    <p class="note-body">The USB-A port runs off VSYS and uses GP12/13. The firmware handles the R13 resistor and USB bus resets automatically — nothing to mod.</p>
+                </div>
+                <div>
+                    <div class="note-title">Cables</div>
+                    <p class="note-body">Standard USB-A to Lightning between the board and phone. Power the board via USB-C or the 5V pin.</p>
+                </div>
+                <div>
+                    <div class="note-title">Supported devices</div>
+                    <p class="note-body">
+                        <a href="https://github.com/pwnerblu/surrealra1n/wiki/Supported-Devices" target="_blank" rel="noopener">
+                            surrealra1n supported devices wiki →
+                        </a>
                     </p>
-
-                    <ul class="led-guide-list">
-                        <li class="led-item">
-                            <span class="led-dot led-orange"></span>
-                            <div class="led-text">
-                                <div class="led-title">Solid Orange</div>
-                                <div class="led-sub">Idle, waiting for something to show up on USB.</div>
-                            </div>
-                        </li>
-                        <li class="led-item">
-                            <span class="led-dot led-magenta"></span>
-                            <div class="led-text">
-                                <div class="led-title">Solid Magenta</div>
-                                <div class="led-sub">Recovery mode spotted. Hold <strong>Volume Down + Power</strong> now — board injects its reboot packet on tick 2.</div>
-                            </div>
-                        </li>
-                        <li class="led-item">
-                            <span class="led-dot led-cyan"></span>
-                            <div class="led-text">
-                                <div class="led-title">Solid Cyan</div>
-                                <div class="led-sub"><strong>Let go of Power</strong>, keep holding Volume Down for about 8 seconds.</div>
-                            </div>
-                        </li>
-                        <li class="led-item">
-                            <span class="led-dot led-white-blink"></span>
-                            <div class="led-text">
-                                <div class="led-title">Blinking White</div>
-                                <div class="led-sub">Release everything. Waiting for DFU to enumerate.</div>
-                            </div>
-                        </li>
-                        <li class="led-item">
-                            <span class="led-dot led-blue"></span>
-                            <div class="led-text">
-                                <div class="led-title">Solid Blue</div>
-                                <div class="led-sub">USBLiter8 exploit is running.</div>
-                            </div>
-                        </li>
-                        <li class="led-item">
-                            <span class="led-dot led-green"></span>
-                            <div class="led-text">
-                                <div class="led-title">Solid Green</div>
-                                <div class="led-sub">Payload uploaded, iPhone is booting. Done!</div>
-                            </div>
-                        </li>
-                    </ul>
                 </div>
-            </section>
-
-            <section class="panel">
-                <div class="panel-header">
-                    <span class="section-num">HW</span>
-                    <h2>Hardware notes</h2>
-                </div>
-                <div class="panel-body">
-                    <div class="doc-entry">
-                        <h4>Waveshare RP2350 USB-A</h4>
-                        <p>The USB-A port feeds directly from VSYS (5V) and uses GP12/13 for data. The firmware handles the board's onboard R13 resistor automatically with active USB bus resets — no hardware mods needed.</p>
-                    </div>
-                    <div class="doc-entry">
-                        <h4>Cables</h4>
-                        <p>Any standard USB-A to Lightning cable between the board's host port and the iPhone works. Power the board itself via USB-C or the 5V pin.</p>
-                    </div>
-                    <div class="doc-entry">
-                        <h4>Supported devices</h4>
-                        <p>
-                            <a href="https://github.com/pwnerblu/surrealra1n/wiki/Supported-Devices"
-                               target="_blank" rel="noopener">
-                                Full device list on the surrealra1n wiki →
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </section>
+            </div>
 
         </div>
 
-    </main>
+    </div>
 
-    <footer class="site-footer">
-        <div>surrealboot · part of the <strong>surrealra1n</strong> project</div>
-        <div class="credits">
-            by <strong>batuvatu</strong>, <strong>Validity (FogboundSloth25)</strong> &amp; <strong>pwnerblu</strong>
-        </div>
+    <footer class="footer">
+        <span>surrealboot · part of <a href="https://github.com/pwnerblu/surrealra1n" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">surrealra1n</a></span>
+        <span>batuvatu, Validity (FogboundSloth25), pwnerblu</span>
     </footer>
 
 </div>

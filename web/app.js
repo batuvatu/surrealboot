@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const serialFlasher = new SurrealSerialFlasher();
 
     // DOM Elements
-    const boardOptions = document.querySelectorAll('.board-option');
+    const boardOptions = document.querySelectorAll('.board-row');
     const downloadBaseBtn = document.getElementById('downloadBaseBtn');
     const baseSizeHint = document.getElementById('baseSizeHint');
     const dropZone = document.getElementById('dropZone');
@@ -51,8 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Board Selection
     boardOptions.forEach(opt => {
         opt.addEventListener('click', () => {
-            boardOptions.forEach(o => o.classList.remove('selected'));
-            opt.classList.add('selected');
+            boardOptions.forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
             const radio = opt.querySelector('input[type="radio"]');
             if (radio) {
                 radio.checked = true;
