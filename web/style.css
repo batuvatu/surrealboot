@@ -263,9 +263,9 @@ button.primary:hover:not(:disabled) {
 .led-list li {
     font-size: 13px;
     color: #888;
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    align-items: start;
     line-height: 1.5;
 }
 
@@ -276,7 +276,8 @@ button.primary:hover:not(:disabled) {
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
-    margin-top: 5px;
+    margin-top: 4px;
+    justify-self: center;
 }
 
 .blink { animation: blink 0.9s ease infinite; }
