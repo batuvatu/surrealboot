@@ -32,6 +32,8 @@ static bus_t gBus = {
  * ============================================================
  * USB CORE 1 TASK
  * ============================================================
+ *
+ * Core 1 is permanently dedicated to USB.
  */
 
 void usb_task(void)
@@ -48,12 +50,17 @@ void usb_task(void)
 
             case USB_CMD_BUS_INIT: {
 
+                INFO(
+                    "[USB] Core 1: bus init"
+                );
+
                 bus_init(
                     &gBus,
                     false
                 );
 
                 ret = 0;
+
                 break;
             }
 
@@ -65,6 +72,7 @@ void usb_task(void)
                 );
 
                 ret = 0;
+
                 break;
             }
 
@@ -76,11 +84,16 @@ void usb_task(void)
                 );
 
                 ret = 0;
+
                 break;
             }
 
 
             case USB_CMD_EXECUTE_FUNC: {
+
+                INFO(
+                    "[USB] Core 1: executing USB operation"
+                );
 
                 ret =
                     (uint32_t)
@@ -108,10 +121,6 @@ void usb_task(void)
  * ============================================================
  * USB CORE START
  * ============================================================
- *
- * Core 1 remains dedicated to USB.
- *
- * Core 0 stays available for the decompression pump.
  */
 
 void usb_start(void)
@@ -121,6 +130,10 @@ void usb_start(void)
     multicore_launch_core1(
         usb_task
     );
+
+    INFO(
+        "[USB] Core 1 USB worker started"
+    );
 }
 
 
@@ -129,21 +142,26 @@ void usb_start(void)
  * COMMAND EXECUTION
  * ============================================================
  *
- * While Core 0 waits for a USB command result, it also services
- * the payload decompressor.
+ * Core 1 executes USB.
  *
- * This is the key piece that allows:
- *
- *   Core 0 -> LZ4
- *   Core 1 -> USB
- *
- * simultaneously.
+ * Core 0 stays alive here and services LZ4 through
+ * surreal_boot_pump().
  */
 
 static int _usb_task_execute_cmd(
     int cmd,
     uint64_t timeout
 ) {
+    /*
+     * Flush any stale FIFO result before issuing a new command.
+     */
+    while (
+        multicore_fifo_rvalid()
+    ) {
+        (void)
+            multicore_fifo_pop_blocking();
+    }
+
     multicore_fifo_push_blocking(
         (uint32_t)cmd
     );
@@ -156,23 +174,28 @@ static int _usb_task_execute_cmd(
     ) {
 
         /*
-         * Run pending LZ4 work.
+         * IMPORTANT:
+         *
+         * Core 0 is the decompression CPU.
+         * Never sleep here while a payload job is pending.
          */
         surreal_boot_pump();
 
-        /*
-         * Timeout support.
-         */
-        if (timeout != 0) {
+        if (
+            timeout != 0
+        ) {
 
             uint64_t elapsed =
                 time_us_64() -
                 start;
 
-            if (elapsed >= timeout) {
+            if (
+                elapsed >=
+                timeout
+            ) {
 
                 INFO(
-                    "TIMEOUT"
+                    "[USB] command timeout"
                 );
 
                 return -1;
@@ -188,6 +211,12 @@ static int _usb_task_execute_cmd(
     return (int)out;
 }
 
+
+/*
+ * Long-running operations deliberately have no timeout because
+ * Apple DFU enumeration and payload transfers can exceed the
+ * short command timeout used by initialization operations.
+ */
 
 #define DEFAULT_TIMEOUT_US \
     (100u * 1000u)
@@ -214,7 +243,9 @@ int usb_bus_wait_for_device(void)
             0
         );
 
-    if (ret == 0) {
+    if (
+        ret == 0
+    ) {
 
         INFO(
             "connected, speed = %s",
@@ -236,7 +267,9 @@ int usb_bus_reset_open_ep0(void)
             DEFAULT_TIMEOUT_US
         );
 
-    if (ret == 0) {
+    if (
+        ret == 0
+    ) {
 
         INFO(
             "opened EP0"
@@ -269,9 +302,6 @@ int usb_bus_execute(
  * ============================================================
  * CONNECTION STATE
  * ============================================================
- *
- * Kept for compatibility with code that wants to inspect the
- * root USB port without modifying the existing bus abstraction.
  */
 
 bool usb_bus_is_connected(void)
