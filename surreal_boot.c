@@ -50,6 +50,24 @@
 
 /*
  * ============================================================
+ * ARM MEMORY BARRIER
+ * ============================================================
+ *
+ * arm-none-eabi-gcc does not provide the CMSIS-style __dmb()
+ * intrinsic used by the original implementation.
+ *
+ * RP2350 uses Cortex-M33, so use the architectural DMB
+ * instruction directly.
+ */
+
+static inline void surreal_boot_dmb(void)
+{
+    __asm volatile("dmb sy" ::: "memory");
+}
+
+
+/*
+ * ============================================================
  * SRAM PAYLOAD BUFFERS
  * ============================================================
  *
@@ -374,7 +392,7 @@ void surreal_boot_pump(void)
     /*
      * Publish the job fields before accessing them.
      */
-    __dmb();
+    surreal_boot_dmb();
 
     int rc =
         lz4_decompress_block(
@@ -391,7 +409,7 @@ void surreal_boot_pump(void)
     /*
      * Publish result and output buffer.
      */
-    __dmb();
+    surreal_boot_dmb();
 
     core0_job_busy =
         false;
@@ -450,12 +468,12 @@ static void submit_decompression(
     /*
      * Publish job.
      */
-    __dmb();
+    surreal_boot_dmb();
 
     core0_job_pending =
         true;
 
-    __dmb();
+    surreal_boot_dmb();
 }
 
 
@@ -471,7 +489,7 @@ static int wait_decompression(void)
         tight_loop_contents();
     }
 
-    __dmb();
+    surreal_boot_dmb();
 
     return core0_job_result;
 }
@@ -1333,6 +1351,7 @@ static int boot_internal(
          *
          * Core 0 is simultaneously decoding next_buffer.
          */
+
         int rc =
             send_decompressed_buffer(
                 b,
@@ -1355,6 +1374,7 @@ static int boot_internal(
          *
          * Ideally Core 0 finished during the USB transfer above.
          */
+
         if (next_submitted) {
 
             if (
@@ -1495,6 +1515,7 @@ static int boot_internal(
     /*
      * CUSTOM_BOOT may already disconnect the device.
      */
+
     INFO(
         "[BOOT] DFU_ABORT rc=%d",
         abort_rc
