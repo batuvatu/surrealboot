@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "pico/time.h"
 #include "pico/platform.h"
@@ -32,7 +33,7 @@
 #endif
 
 #ifndef SURREALBOOT_TRANSFER_RETRY_SETTLE_MS
-#define SURREALBOOT_TRANSFER_RETRY_SETTLE_MS 50u
+#define SURREALBOOT_TRANSFER_RETRY_SETTLE_MS 10u
 #endif
 
 #define INITIAL_TRANSFER_SIZE \
@@ -42,22 +43,16 @@
     SURREALBOOT_MIN_TRANSFER_SIZE
 
 #define PROGRESS_INTERVAL_BYTES \
-    (256u * 1024u)
+    (128u * 1024u)
 
 #define CTRL_TIMEOUT_MS \
-    100u
+    250u
 
 
 /*
  * ============================================================
  * ARM MEMORY BARRIER
  * ============================================================
- *
- * arm-none-eabi-gcc does not provide the CMSIS-style __dmb()
- * intrinsic used by the original implementation.
- *
- * RP2350 uses Cortex-M33, so use the architectural DMB
- * instruction directly.
  */
 
 static inline void surreal_boot_dmb(void)
@@ -71,16 +66,14 @@ static inline void surreal_boot_dmb(void)
  * SRAM PAYLOAD BUFFERS
  * ============================================================
  *
- * RP2350 SRAM = 520 KiB.
+ * Keep enough SRAM free for Pico runtime, USB state, stacks, etc.
  *
- * We reserve:
+ * Two 192 KiB buffers give us:
  *
- *   192 KiB buffer A
- *   192 KiB buffer B
+ *   192 KiB -> Core 0 decode
+ *   192 KiB -> Core 1 USB transfer
  *
- * = 384 KiB payload staging.
- *
- * Core 0 decompresses one buffer while Core 1 transfers the other.
+ * while the payload itself remains in XIP flash.
  */
 
 #ifndef SURREALBOOT_DECOMP_BUFFER_SIZE
@@ -100,7 +93,7 @@ static uint8_t boot_buffer_b[MAX_BLOCK]
 
 /*
  * ============================================================
- * DYNAMIC FLASH PAYLOAD
+ * PAYLOAD FORMAT
  * ============================================================
  */
 
@@ -136,19 +129,14 @@ static uint32_t working_transfer_size =
  * CORE 0 DECOMPRESSION JOB
  * ============================================================
  *
- * IMPORTANT:
+ * Core 1:
+ *     USB / DFU
  *
- * Core 1 already belongs to USBLiter8's usb_task().
+ * Core 0:
+ *     LZ4
  *
- * Therefore we DO NOT launch another Core 1 worker here.
- *
- * Instead:
- *
- *   Core 1 = USB / DFU
- *   Core 0 = LZ4 decompression
- *
- * usb.c calls surreal_boot_pump() while Core 0 is waiting for
- * the USB task result.
+ * Core 0 is the main Pico core.
+ * Core 1 is owned by usb_task().
  */
 
 typedef struct {
@@ -178,12 +166,30 @@ static volatile int core0_job_result =
 
 /*
  * ============================================================
- * LZ4
+ * FAST LZ4
  * ============================================================
  *
- * The decoder is placed in SRAM because Core 0 executes it while
- * Core 1 is simultaneously using the USB host.
+ * The entire decoder executes from SRAM.
+ *
+ * Use O3 specifically for the hot decompressor even though the
+ * whole firmware is built with -Os.
  */
+
+static int __not_in_flash_func(read_len)(
+    const uint8_t *src,
+    uint32_t size,
+    uint32_t *pos,
+    uint32_t *len
+) __attribute__((optimize("O3")));
+
+static int __not_in_flash_func(lz4_decompress_block)(
+    const uint8_t *src,
+    uint32_t src_size,
+    uint8_t *dst,
+    uint32_t dst_capacity,
+    uint32_t expected_size
+) __attribute__((optimize("O3")));
+
 
 static int __not_in_flash_func(read_len)(
     const uint8_t *src,
@@ -222,6 +228,95 @@ static int __not_in_flash_func(read_len)(
 }
 
 
+/*
+ * Fast forward copy for non-overlapping data.
+ */
+static inline void __not_in_flash_func(copy_literals)(
+    uint8_t *dst,
+    const uint8_t *src,
+    uint32_t len
+) {
+    while (len >= 4u) {
+
+        uint32_t word;
+
+        memcpy(
+            &word,
+            src,
+            sizeof(word)
+        );
+
+        memcpy(
+            dst,
+            &word,
+            sizeof(word)
+        );
+
+        src += 4;
+        dst += 4;
+        len -= 4;
+    }
+
+    while (len != 0u) {
+
+        *dst++ =
+            *src++;
+
+        --len;
+    }
+}
+
+
+/*
+ * Fast overlapping LZ4 match copy.
+ *
+ * For offset >= 4, 32-bit copies are safe.
+ * For very small offsets we keep the byte-at-a-time path because
+ * the source overlaps the destination.
+ */
+static inline void __not_in_flash_func(copy_match)(
+    uint8_t *dst,
+    uint32_t dp,
+    uint32_t offset,
+    uint32_t match
+) {
+    uint32_t from =
+        dp - offset;
+
+    if (offset >= 4u) {
+
+        while (match >= 4u) {
+
+            uint32_t word;
+
+            memcpy(
+                &word,
+                &dst[from],
+                sizeof(word)
+            );
+
+            memcpy(
+                &dst[dp],
+                &word,
+                sizeof(word)
+            );
+
+            from += 4;
+            dp += 4;
+            match -= 4;
+        }
+    }
+
+    while (match != 0u) {
+
+        dst[dp++] =
+            dst[from++];
+
+        --match;
+    }
+}
+
+
 static int __not_in_flash_func(lz4_decompress_block)(
     const uint8_t *src,
     uint32_t src_size,
@@ -243,12 +338,14 @@ static int __not_in_flash_func(lz4_decompress_block)(
         uint32_t literals =
             token >> 4;
 
-        if (read_len(
+        if (
+            read_len(
                 src,
                 src_size,
                 &sp,
                 &literals
-            ) != 0) {
+            ) != 0
+        ) {
             return -1;
         }
 
@@ -267,27 +364,33 @@ static int __not_in_flash_func(lz4_decompress_block)(
         }
 
         /*
-         * Literal copy.
+         * Literal bytes.
          */
-        for (
-            uint32_t i = 0;
-            i < literals;
-            ++i
-        ) {
-            dst[dp++] =
-                src[sp++];
-        }
+        copy_literals(
+            &dst[dp],
+            &src[sp],
+            literals
+        );
+
+        dp +=
+            literals;
+
+        sp +=
+            literals;
 
         /*
-         * Last LZ4 sequence can contain literals only.
+         * Last sequence can contain literals only.
          */
         if (sp == src_size) {
             break;
         }
 
+        /*
+         * Offset.
+         */
         if (
-            sp + 2 >
-            src_size
+            src_size - sp <
+            2u
         ) {
             return -1;
         }
@@ -296,20 +399,24 @@ static int __not_in_flash_func(lz4_decompress_block)(
             (uint32_t)src[sp] |
             ((uint32_t)src[sp + 1] << 8);
 
-        sp += 2;
+        sp +=
+            2u;
 
         if (
-            offset == 0 ||
+            offset == 0u ||
             offset > dp
         ) {
             return -1;
         }
 
+        /*
+         * Match length.
+         */
         uint32_t match =
-            (token & 0x0F) + 4u;
+            (token & 0x0Fu) + 4u;
 
         if (
-            (token & 0x0F) == 15u
+            (token & 0x0Fu) == 15u
         ) {
 
             uint32_t extra =
@@ -337,20 +444,15 @@ static int __not_in_flash_func(lz4_decompress_block)(
             return -1;
         }
 
-        uint32_t from =
-            dp - offset;
+        copy_match(
+            dst,
+            dp,
+            offset,
+            match
+        );
 
-        /*
-         * Overlapping LZ4 match copy must be forward.
-         */
-        for (
-            uint32_t i = 0;
-            i < match;
-            ++i
-        ) {
-            dst[dp++] =
-                dst[from + i];
-        }
+        dp +=
+            match;
     }
 
     return
@@ -362,15 +464,12 @@ static int __not_in_flash_func(lz4_decompress_block)(
 
 /*
  * ============================================================
- * CORE 0 DECOMPRESSION PUMP
+ * CORE 0 WORKER
  * ============================================================
  *
- * This function is called from Core 0 by usb.c.
- *
- * It executes the pending decompression job and returns.
- *
- * It intentionally performs one whole block rather than doing
- * tiny fragments. This keeps the USB task independent on Core 1.
+ * This is intentionally cooperative because Core 0 is also the
+ * main application core. While Core 1 runs the USB worker,
+ * Core 0 continuously enters this worker from usb.c.
  */
 
 void surreal_boot_pump(void)
@@ -386,13 +485,16 @@ void surreal_boot_pump(void)
     core0_job_busy =
         true;
 
-    core0_job_done =
-        false;
-
-    /*
-     * Publish the job fields before accessing them.
-     */
     surreal_boot_dmb();
+
+    INFO(
+        "[LZ4] Core 0 decoding %lu -> %lu bytes",
+        (unsigned long)core0_job.src_size,
+        (unsigned long)core0_job.expected_size
+    );
+
+    uint64_t start =
+        time_us_64();
 
     int rc =
         lz4_decompress_block(
@@ -403,12 +505,12 @@ void surreal_boot_pump(void)
             core0_job.expected_size
         );
 
+    uint64_t elapsed =
+        time_us_64() - start;
+
     core0_job_result =
         rc;
 
-    /*
-     * Publish result and output buffer.
-     */
     surreal_boot_dmb();
 
     core0_job_busy =
@@ -419,14 +521,45 @@ void surreal_boot_pump(void)
 
     core0_job_done =
         true;
+
+    if (rc == 0) {
+
+        uint32_t kibps =
+            elapsed > 0
+            ? (uint32_t)(
+                (
+                    (uint64_t)
+                        core0_job.expected_size *
+                    1000000u
+                ) /
+                elapsed /
+                1024u
+            )
+            : 0u;
+
+        INFO(
+            "[LZ4] Core 0 finished in %lu us (%u KiB/s)",
+            (unsigned long)elapsed,
+            (unsigned)kibps
+        );
+
+    } else {
+
+        INFO(
+            "[LZ4] Core 0 FAILED rc=%d in %lu us",
+            rc,
+            (unsigned long)elapsed
+        );
+    }
 }
 
 
 /*
- * Submit one Core 0 decompression operation.
- *
- * This function executes on Core 1.
+ * ============================================================
+ * SUBMIT DECOMPRESSION
+ * ============================================================
  */
+
 static void submit_decompression(
     const uint8_t *src,
     uint32_t src_size,
@@ -434,9 +567,6 @@ static void submit_decompression(
     uint32_t dst_capacity,
     uint32_t expected_size
 ) {
-    /*
-     * Do not overwrite an active job.
-     */
     while (
         core0_job_pending ||
         core0_job_busy
@@ -465,9 +595,6 @@ static void submit_decompression(
     core0_job_done =
         false;
 
-    /*
-     * Publish job.
-     */
     surreal_boot_dmb();
 
     core0_job_pending =
@@ -478,14 +605,22 @@ static void submit_decompression(
 
 
 /*
- * Wait for Core 0 to finish decompression.
- *
- * Core 1 can continue doing other work while Core 0 executes
- * the decoder.
+ * ============================================================
+ * WAIT FOR DECOMPRESSION
+ * ============================================================
  */
+
 static int wait_decompression(void)
 {
     while (!core0_job_done) {
+
+        /*
+         * Core 1 normally calls this function while Core 0 is
+         * running the worker. This path is retained for safety
+         * if the call ever happens on Core 0.
+         */
+        surreal_boot_pump();
+
         tight_loop_contents();
     }
 
@@ -546,9 +681,16 @@ static int dfu_download_chunk(
     if (rc != 0) {
 
         INFO(
-            "[DFU] FAILED rc=%d "
-            "offset=0x%08lx len=0x%04x",
+            "[DFU] FAILED rc=%d offset=0x%08lx len=0x%04x",
             rc,
+            (unsigned long)offset,
+            (unsigned)len
+        );
+
+    } else {
+
+        INFO(
+            "[DFU] sent offset=0x%08lx len=0x%04x",
             (unsigned long)offset,
             (unsigned)len
         );
@@ -598,24 +740,12 @@ static int dfu_download_adaptive(
             return rc;
         }
 
-        if (rc == -2) {
-
-            INFO(
-                "[DFU] timeout at "
-                "chunk size 0x%lx",
-                (unsigned long)
-                    working_transfer_size
-            );
-
-        } else {
-
-            INFO(
-                "[DFU] pipe stall at "
-                "chunk size 0x%lx",
-                (unsigned long)
-                    working_transfer_size
-            );
-        }
+        INFO(
+            "[DFU] transfer failed at size 0x%lx rc=%d",
+            (unsigned long)
+                working_transfer_size,
+            rc
+        );
 
         if (
             working_transfer_size <=
@@ -623,20 +753,20 @@ static int dfu_download_adaptive(
         ) {
 
             INFO(
-                "[DFU] minimum transfer "
-                "size 0x%lx also failed "
-                "(rc=%d)",
+                "[DFU] minimum transfer size "
+                "0x%lx also failed",
                 (unsigned long)
-                    working_transfer_size,
-                rc
+                    working_transfer_size
             );
 
             return rc;
         }
 
+        /*
+         * Re-open EP0 before retrying.
+         */
         INFO(
-            "[DFU] resetting USB bus "
-            "before retry"
+            "[DFU] resetting USB bus before retry"
         );
 
         usb_bus_reset_open_ep0();
@@ -652,6 +782,7 @@ static int dfu_download_adaptive(
             working_transfer_size <
             MIN_TRANSFER_SIZE
         ) {
+
             working_transfer_size =
                 MIN_TRANSFER_SIZE;
         }
@@ -784,7 +915,6 @@ find_flash_payload(
         if (
             hdr->magic ==
             FLASH_PAYLOAD_MAGIC &&
-
             hdr->chunk_count > 0
         ) {
 
@@ -992,7 +1122,6 @@ static int boot_internal(
                 fchunks +
                 chunk_count
             );
-
     }
 
 #if BOOTFILE_COUNT > 0
@@ -1091,11 +1220,7 @@ static int boot_internal(
     );
 
     INFO(
-        "[BOOT] target throughput: >=168 KiB/s"
-    );
-
-    INFO(
-        "[BOOT] target time: <15 seconds"
+        "[BOOT] CPU/USB pipeline ENABLED"
     );
 
     INFO(
@@ -1105,16 +1230,8 @@ static int boot_internal(
 
     /*
      * ========================================================
-     * PIPELINE
+     * DOUBLE BUFFER PIPELINE
      * ========================================================
-     *
-     * Core 0:
-     *     decompress next block
-     *
-     * Core 1:
-     *     send current block
-     *
-     * The first block must be decoded before transmission begins.
      */
 
     uint8_t *buffers[2] = {
@@ -1137,11 +1254,14 @@ static int boot_internal(
 
     /*
      * ========================================================
-     * PRIME FIRST BLOCK
+     * FIRST BLOCK
      * ========================================================
      */
 
-    if (current_block >= chunk_count) {
+    if (
+        current_block >=
+        chunk_count
+    ) {
         return -1;
     }
 
@@ -1151,7 +1271,10 @@ static int boot_internal(
             fchunks[current_block]
                 .uncompressed_size;
 
-        if (size > MAX_BLOCK) {
+        if (
+            size >
+            MAX_BLOCK
+        ) {
 
             INFO(
                 "[BOOT] block %u too large: "
@@ -1163,6 +1286,11 @@ static int boot_internal(
 
             return -1;
         }
+
+        INFO(
+            "[BOOT] preparing first block %u",
+            (unsigned)current_block
+        );
 
         submit_decompression(
             flash_cursor,
@@ -1207,29 +1335,29 @@ static int boot_internal(
 
 
     /*
-     * ========================================================
-     * WAIT FOR FIRST BLOCK
-     * ========================================================
+     * Core 0 decompresses the first block.
      */
-
     if (
-        wait_decompression() != 0
+        wait_decompression() !=
+        0
     ) {
 
         INFO(
-            "[LZ4] decode FAILED "
-            "block=%u rc=%d",
-            (unsigned)current_block,
-            core0_job_result
+            "[BOOT] first block decompression failed"
         );
 
         return -1;
     }
 
+    INFO(
+        "[BOOT] first block ready, "
+        "starting USB transfer"
+    );
+
 
     /*
      * ========================================================
-     * MAIN DOUBLE BUFFER PIPELINE
+     * MAIN PIPELINE
      * ========================================================
      */
 
@@ -1246,7 +1374,6 @@ static int boot_internal(
             current_size =
                 fchunks[current_block]
                     .uncompressed_size;
-
         }
 
 #if BOOTFILE_COUNT > 0
@@ -1261,19 +1388,16 @@ static int boot_internal(
 
 #endif
 
-
-        /*
-         * Prepare next block immediately.
-         *
-         * Core 0 will decode it while Core 1 sends the current buffer.
-         */
-
         bool next_submitted =
             false;
 
         uint16_t next_block =
             current_block + 1u;
 
+
+        /*
+         * Submit the next decode job BEFORE USB transfer.
+         */
         if (
             next_block <
             chunk_count
@@ -1347,11 +1471,9 @@ static int boot_internal(
 
 
         /*
-         * Send the current decoded buffer.
-         *
-         * Core 0 is simultaneously decoding next_buffer.
+         * Core 1 sends current buffer while Core 0 decodes
+         * next_buffer.
          */
-
         int rc =
             send_decompressed_buffer(
                 b,
@@ -1370,15 +1492,14 @@ static int boot_internal(
 
 
         /*
-         * Wait only if the next block was requested.
-         *
-         * Ideally Core 0 finished during the USB transfer above.
+         * Wait for the next decode only after USB had a chance
+         * to run in parallel.
          */
-
         if (next_submitted) {
 
             if (
-                wait_decompression() != 0
+                wait_decompression() !=
+                0
             ) {
 
                 INFO(
@@ -1489,7 +1610,10 @@ static int boot_internal(
         finish_rc
     );
 
-    if (finish_rc != 0) {
+    if (
+        finish_rc !=
+        0
+    ) {
         return finish_rc;
     }
 
@@ -1511,10 +1635,6 @@ static int boot_internal(
             b,
             DFU_ABORT
         );
-
-    /*
-     * CUSTOM_BOOT may already disconnect the device.
-     */
 
     INFO(
         "[BOOT] DFU_ABORT rc=%d",
@@ -1549,10 +1669,6 @@ static int boot_internal(
     );
 
     INFO(
-        "[SUCCESS] ========================================"
-    );
-
-    INFO(
         "[SUCCESS] Took %lu ms to transfer",
         (unsigned long)
             elapsed_ms
@@ -1565,6 +1681,10 @@ static int boot_internal(
 
     INFO(
         "[SUCCESS] Device should boot now!"
+    );
+
+    INFO(
+        "[SUCCESS] ========================================"
     );
 
     return 0;
