@@ -5,15 +5,15 @@ import sys
 
 
 #
-# Keep the producer-side LZ4 block size aligned with the larger
-# decompression window used by surreal_boot.c.
+# Match the SRAM staging window in surreal_boot.c.
 #
-BLOCK = 128 * 1024
+BLOCK = 192 * 1024
 
 
 if len(sys.argv) != 4:
     print(
-        "usage: embed_bootfiles.py <bootfiles> <output.c> <output.h>",
+        "usage: embed_bootfiles.py "
+        "<bootfiles> <output.c> <output.h>",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -23,7 +23,9 @@ root = Path(sys.argv[1]).resolve()
 out_c = Path(sys.argv[2]).resolve()
 out_h = Path(sys.argv[3]).resolve()
 
+
 blob_dir = out_c.parent / "boot_blobs"
+
 blob_dir.mkdir(
     parents=True,
     exist_ok=True,
@@ -31,7 +33,7 @@ blob_dir.mkdir(
 
 
 #
-# Import the local compressor without requiring pip.
+# Import local compressor without requiring pip.
 #
 sys.path.insert(
     0,
@@ -49,9 +51,11 @@ files = sorted(
 
 
 #
-# No boot files:
-# generate empty embedded payload tables for dynamic flash mode.
+# ============================================================
+# Empty payload mode
+# ============================================================
 #
+
 if not files:
 
     print(
@@ -112,7 +116,7 @@ records = []
 
 #
 # ============================================================
-# Compress boot files
+# Compress payloads
 # ============================================================
 #
 
@@ -143,7 +147,9 @@ for file_index, path in enumerate(files):
             f"{chunk_index:04d}.lz4"
         )
 
-        blob.write_bytes(packed)
+        blob.write_bytes(
+            packed
+        )
 
         chunks.append(
             (
@@ -170,13 +176,21 @@ for file_index, path in enumerate(files):
 
 c = []
 
-c.append("#include <stdint.h>")
-c.append('#include "bootfiles_data.h"')
-c.append("")
+c.append(
+    "#include <stdint.h>"
+)
+
+c.append(
+    '#include "bootfiles_data.h"'
+)
+
+c.append(
+    ""
+)
 
 
 #
-# Emit every compressed payload blob.
+# Emit compressed payload blobs.
 #
 for fi, (
     _name,
@@ -191,7 +205,8 @@ for fi, (
     ) in enumerate(chunks):
 
         blob_path = (
-            blob.as_posix()
+            blob
+            .as_posix()
             .replace("\\", "/")
         )
 
@@ -224,13 +239,14 @@ for fi, (
                 f'\\n"',
 
                 ");",
+
                 "",
             ]
         )
 
 
 #
-# Emit chunk metadata tables.
+# Emit metadata tables.
 #
 for fi, (
     _name,
@@ -267,10 +283,11 @@ for fi, (
 
 
 #
-# Emit bootfile descriptors.
+# Bootfile descriptors.
 #
 c.append(
-    "const struct bootfile_desc bootfiles[] = {"
+    "const struct bootfile_desc "
+    "bootfiles[] = {"
 )
 
 for fi, (
@@ -298,6 +315,7 @@ c.extend(
         "",
     ]
 )
+
 
 out_c.parent.mkdir(
     parents=True,
@@ -379,7 +397,7 @@ out_h.write_text(
 
 print(
     f"Embedded {len(records)} bootfile(s) "
-    f"as 128 KiB LZ4 blocks:"
+    f"as 192 KiB LZ4 blocks:"
 )
 
 
