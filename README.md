@@ -44,8 +44,8 @@ Detailed information can be found on [surrealra1n wiki/Supported Devices](https:
 | :--- | :--- | :--- |
 | Waveshare RP2350 USB-A | ✅ Recommended (Plug & Play) | Onboard USB-A Female (GP12 / GP13) |
 | Waveshare RP2350-Zero |  Untested | GP12 (+) / GP13 (-) |
-| Pimoroni Tiny 2350 | Untested | GP16 (+) / GP17 (-) |
-| Raspberry Pi Pico 2 | Untested | GP16 (+) / GP17 (-) |
+| Pimoroni Tiny 2350 | Untested | GP12 (+) / GP13 (-) |
+| Raspberry Pi Pico 2 | Untested | GP12 (+) / GP13 (-) |
 
 ---
 
