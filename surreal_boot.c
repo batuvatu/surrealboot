@@ -17,14 +17,40 @@
 #define CUSTOM_BOOT       8
 
 /*
- * Transfer size strategy for PWNED DFU on Apple A10 (CPID:8020).
+ * ============================================================
+ * Experimental fast payload transport
+ * ============================================================
  *
- * The RP2350 PIO USB host stack cannot reliably complete OUT control
- * transfers with a DATA phase larger than ~0x80 bytes against the
- * Apple SecureROM DFU implementation post-exploit.
+ * The upstream implementation starts at 0x80 bytes because larger
+ * OUT control transfers have historically been unreliable with the
+ * RP2350 PIO USB host + Apple DFU combination.
+ *
+ * This branch intentionally starts at 0x200 and falls back to
+ * smaller powers of two when the target rejects/loses a transfer.
+ *
+ * Override these at compile time when testing another configuration:
+ *
+ *   -DSURREALBOOT_INITIAL_TRANSFER_SIZE=0x100
+ *   -DSURREALBOOT_MIN_TRANSFER_SIZE=0x40
+ *   -DSURREALBOOT_MAX_BLOCK=131072
  */
-#define INITIAL_TRANSFER_SIZE 0x80
-#define MIN_TRANSFER_SIZE     0x40
+#ifndef SURREALBOOT_INITIAL_TRANSFER_SIZE
+#define SURREALBOOT_INITIAL_TRANSFER_SIZE 0x200u
+#endif
+
+#ifndef SURREALBOOT_MIN_TRANSFER_SIZE
+#define SURREALBOOT_MIN_TRANSFER_SIZE 0x40u
+#endif
+
+#ifndef SURREALBOOT_TRANSFER_RETRY_SETTLE_MS
+#define SURREALBOOT_TRANSFER_RETRY_SETTLE_MS 50u
+#endif
+
+#define INITIAL_TRANSFER_SIZE \
+    SURREALBOOT_INITIAL_TRANSFER_SIZE
+
+#define MIN_TRANSFER_SIZE \
+    SURREALBOOT_MIN_TRANSFER_SIZE
 
 /*
  * Print a progress line every this many bytes sent.
@@ -32,14 +58,28 @@
  */
 #define PROGRESS_INTERVAL_BYTES (256u * 1024u)
 
-#define CTRL_TIMEOUT_MS   100   /* 0x80 completes in <20ms; 100ms = fast failure detection */
+/*
+ * Keep failure detection short while testing larger transfers.
+ */
+#define CTRL_TIMEOUT_MS 100u
 
-#define MAX_BLOCK         (64 * 1024)
+/*
+ * Decompressed payload staging window.
+ *
+ * The transport packet size and the decompression window are deliberately
+ * independent. A 128 KiB window allows a larger amount of payload to be
+ * resident in SRAM before being split into USB transfers.
+ */
+#ifndef SURREALBOOT_MAX_BLOCK
+#define SURREALBOOT_MAX_BLOCK (128u * 1024u)
+#endif
+
+#define MAX_BLOCK SURREALBOOT_MAX_BLOCK
 
 /*
  * Dynamic flash payload definitions (for web-flashed universal firmwares).
  * When booted without compile-time embedded payload, surrealboot scans
- * flash address 0x10040000 for an SBPT header.
+ * flash addresses for an SBPT header.
  */
 #define FLASH_PAYLOAD_OFFSET  (0x10040000u)
 #define FLASH_PAYLOAD_MAGIC   (0x53425054u) /* "SBPT" */
@@ -57,9 +97,19 @@ struct flash_payload_header {
     uint16_t reserved;
 };
 
-static uint8_t boot_scratch[MAX_BLOCK] __attribute__((aligned(4)));
+/*
+ * One decompression window.
+ *
+ * NOTE:
+ * This is intentionally kept as a single buffer in this iteration.
+ * The next iteration can turn this into double-buffered/pipelined
+ * decompression after the 0x200 transport path is proven stable.
+ */
+static uint8_t boot_scratch[MAX_BLOCK]
+    __attribute__((aligned(4)));
 
-static uint32_t working_transfer_size = INITIAL_TRANSFER_SIZE;
+static uint32_t working_transfer_size =
+    INITIAL_TRANSFER_SIZE;
 
 /*
  * ============================================================
@@ -154,7 +204,8 @@ static int lz4_decompress_block(
             return -1;
         }
 
-        uint32_t match = (token & 0x0F) + 4u;
+        uint32_t match =
+            (token & 0x0F) + 4u;
 
         if ((token & 0x0F) == 15u) {
 
@@ -225,13 +276,24 @@ static int dfu_download_chunk(
     );
 
     if (rc != 0) {
-        INFO("[DFU] FAILED rc=%d offset=0x%08lx len=0x%04x",
-             rc, (unsigned long)offset, (unsigned)len);
+        INFO(
+            "[DFU] FAILED rc=%d offset=0x%08lx len=0x%04x",
+            rc,
+            (unsigned long)offset,
+            (unsigned)len
+        );
     }
 
     return rc;
 }
 
+/*
+ * Try the current transfer size.
+ *
+ * On failure the current transfer is retried at a smaller power-of-two
+ * size. The same USB request ordinal is used so that the failed request
+ * is not counted as a successfully delivered DFU block.
+ */
 static int dfu_download_adaptive(
     bus_t *b,
     const uint8_t *buf,
@@ -259,7 +321,11 @@ static int dfu_download_adaptive(
         }
 
         if (rc != -2 && rc != -1) {
-            INFO("[DFU] unrecoverable error rc=%d", rc);
+            INFO(
+                "[DFU] unrecoverable error rc=%d",
+                rc
+            );
+
             return rc;
         }
 
@@ -285,11 +351,20 @@ static int dfu_download_adaptive(
             return rc;
         }
 
-        INFO("[DFU] resetting USB bus before retry");
+        INFO(
+            "[DFU] resetting USB bus before retry"
+        );
 
         usb_bus_reset_open_ep0();
 
-        sleep_ms(150);
+        /*
+         * Smaller settle delay than the original 150 ms. This is intended
+         * to reduce the penalty of probing an overly aggressive transfer
+         * size while still giving the USB state machine time to recover.
+         */
+        sleep_ms(
+            SURREALBOOT_TRANSFER_RETRY_SETTLE_MS
+        );
 
         working_transfer_size >>= 1;
 
@@ -304,8 +379,9 @@ static int dfu_download_adaptive(
     }
 }
 
-static int dfu_download_finish(bus_t *b)
-{
+static int dfu_download_finish(
+    bus_t *b
+) {
     struct usb_setup_req_header {
         uint8_t  bmRequestType;
         uint8_t  bRequest;
@@ -322,7 +398,9 @@ static int dfu_download_finish(bus_t *b)
         .wLength       = 0,
     };
 
-    INFO("[DFU] sending zero-length termination");
+    INFO(
+        "[DFU] sending zero-length termination"
+    );
 
     int rc = bus_control_xfer(
         b,
@@ -390,16 +468,35 @@ static int custom_request(
  * ============================================================
  */
 
-static const struct flash_payload_header *find_flash_payload(uint32_t *out_base) {
-    static const uint32_t offsets[] = { 0x10020000u, 0x10040000u };
-    for (size_t i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++) {
+static const struct flash_payload_header *
+find_flash_payload(
+    uint32_t *out_base
+) {
+    static const uint32_t offsets[] = {
+        0x10020000u,
+        0x10040000u
+    };
+
+    for (
+        size_t i = 0;
+        i < sizeof(offsets) / sizeof(offsets[0]);
+        i++
+    ) {
         const struct flash_payload_header *hdr =
             (const struct flash_payload_header *)offsets[i];
-        if (hdr->magic == FLASH_PAYLOAD_MAGIC && hdr->chunk_count > 0) {
-            if (out_base) *out_base = offsets[i];
+
+        if (
+            hdr->magic == FLASH_PAYLOAD_MAGIC &&
+            hdr->chunk_count > 0
+        ) {
+            if (out_base) {
+                *out_base = offsets[i];
+            }
+
             return hdr;
         }
     }
+
     return NULL;
 }
 
@@ -409,67 +506,138 @@ static int boot_internal(
 ) {
     (void)ctx;
 
-    /* Check for dynamic flash payload at 0x10020000 / 0x10040000 */
+    /*
+     * Check for dynamic flash payload at 0x10020000 / 0x10040000.
+     */
     uint32_t flash_base = 0;
-    const struct flash_payload_header *fhdr = find_flash_payload(&flash_base);
-    bool have_flash = (fhdr != NULL);
+
+    const struct flash_payload_header *fhdr =
+        find_flash_payload(&flash_base);
+
+    bool have_flash =
+        (fhdr != NULL);
 
 #if BOOTFILE_COUNT > 0
-    bool have_embedded = (bootfiles[0].chunk_count > 0);
+    bool have_embedded =
+        (bootfiles[0].chunk_count > 0);
 #else
     bool have_embedded = false;
 #endif
 
     if (!have_flash && !have_embedded) {
-        INFO("[BOOT] no payload found (no compiled embedded payload and no valid SBPT header in flash)");
+        INFO(
+            "[BOOT] no payload found "
+            "(no compiled embedded payload and no valid SBPT header in flash)"
+        );
+
         return -1;
     }
 
     const char *payload_name = NULL;
+
     uint32_t uncompressed_size = 0;
     uint16_t chunk_count = 0;
+
     const struct flash_payload_chunk *fchunks = NULL;
     const uint8_t *fblob_ptr = NULL;
 
     if (have_flash) {
-        payload_name = (flash_base == 0x10020000u) ? "flash@0x10020000" : "flash@0x10040000";
-        uncompressed_size = fhdr->uncompressed_size;
-        chunk_count = fhdr->chunk_count;
-        fchunks = (const struct flash_payload_chunk *)(flash_base + sizeof(struct flash_payload_header));
-        fblob_ptr = (const uint8_t *)(fchunks + chunk_count);
+
+        payload_name =
+            (flash_base == 0x10020000u)
+            ? "flash@0x10020000"
+            : "flash@0x10040000";
+
+        uncompressed_size =
+            fhdr->uncompressed_size;
+
+        chunk_count =
+            fhdr->chunk_count;
+
+        fchunks =
+            (const struct flash_payload_chunk *)(
+                flash_base +
+                sizeof(struct flash_payload_header)
+            );
+
+        fblob_ptr =
+            (const uint8_t *)(fchunks + chunk_count);
     }
+
 #if BOOTFILE_COUNT > 0
     else {
-        const struct bootfile_desc *boot = &bootfiles[0];
-        payload_name = boot->name;
-        uncompressed_size = boot->uncompressed_size;
-        chunk_count = boot->chunk_count;
+
+        const struct bootfile_desc *boot =
+            &bootfiles[0];
+
+        payload_name =
+            boot->name;
+
+        uncompressed_size =
+            boot->uncompressed_size;
+
+        chunk_count =
+            boot->chunk_count;
     }
 #endif
 
-    working_transfer_size = INITIAL_TRANSFER_SIZE;
+    /*
+     * Every boot operation begins with the experimentally selected
+     * fast-path size.
+     */
+    working_transfer_size =
+        INITIAL_TRANSFER_SIZE;
 
-    uint64_t t_start      = time_us_64();
-    uint32_t last_log_pos = 0;
+    uint64_t t_start =
+        time_us_64();
+
+    uint32_t last_log_pos =
+        0;
 
     INFO("");
-    INFO("[BOOT] ========================================");
-    INFO("[BOOT] Embedded boot payload (%s)", have_flash ? "FLASH SBPT" : "COMPILED");
-    INFO("[BOOT] ========================================");
-    INFO("[BOOT] name: %s", payload_name);
+    INFO(
+        "[BOOT] ========================================"
+    );
+
+    INFO(
+        "[BOOT] Embedded boot payload (%s)",
+        have_flash
+            ? "FLASH SBPT"
+            : "COMPILED"
+    );
+
+    INFO(
+        "[BOOT] ========================================"
+    );
+
+    INFO(
+        "[BOOT] name: %s",
+        payload_name
+    );
+
     INFO(
         "[BOOT] uncompressed size: %lu bytes",
         (unsigned long)uncompressed_size
     );
+
     INFO(
         "[BOOT] compressed blocks: %u",
         (unsigned)chunk_count
     );
+
     INFO(
         "[BOOT] initial DFU chunk size: 0x%lx",
         (unsigned long)working_transfer_size
     );
-    INFO("[BOOT] ========================================");
+
+    INFO(
+        "[BOOT] decompressed SRAM window: %lu bytes",
+        (unsigned long)sizeof(boot_scratch)
+    );
+
+    INFO(
+        "[BOOT] ========================================"
+    );
 
     size_t sent = 0;
     uint32_t ordinal = 0;
@@ -480,29 +648,58 @@ static int boot_internal(
         ++block_index
     ) {
         const uint8_t *chunk_start = NULL;
+
         uint32_t chunk_compressed_size = 0;
         uint32_t chunk_uncompressed_size = 0;
 
         if (have_flash) {
-            chunk_compressed_size = fchunks[block_index].compressed_size;
-            chunk_uncompressed_size = fchunks[block_index].uncompressed_size;
-            chunk_start = fblob_ptr;
-            fblob_ptr += chunk_compressed_size;
+
+            chunk_compressed_size =
+                fchunks[block_index].compressed_size;
+
+            chunk_uncompressed_size =
+                fchunks[block_index].uncompressed_size;
+
+            chunk_start =
+                fblob_ptr;
+
+            fblob_ptr +=
+                chunk_compressed_size;
         }
+
 #if BOOTFILE_COUNT > 0
         else {
-            const struct bootfile_chunk *chunk = &bootfiles[0].chunks[block_index];
-            chunk_start = chunk->start;
-            chunk_compressed_size = chunk->compressed_size;
-            chunk_uncompressed_size = chunk->uncompressed_size;
+
+            const struct bootfile_chunk *chunk =
+                &bootfiles[0].chunks[block_index];
+
+            chunk_start =
+                chunk->start;
+
+            chunk_compressed_size =
+                chunk->compressed_size;
+
+            chunk_uncompressed_size =
+                chunk->uncompressed_size;
         }
 #endif
 
-        if (chunk_uncompressed_size > MAX_BLOCK) {
-            INFO("[BOOT] invalid block %u metadata", (unsigned)block_index);
+        if (
+            chunk_uncompressed_size >
+            MAX_BLOCK
+        ) {
+            INFO(
+                "[BOOT] invalid block %u metadata",
+                (unsigned)block_index
+            );
+
             return -1;
         }
 
+        /*
+         * Decompress the complete block into SRAM before starting
+         * its USB transfer.
+         */
         int rc = lz4_decompress_block(
             chunk_start,
             chunk_compressed_size,
@@ -521,8 +718,11 @@ static int boot_internal(
             return -1;
         }
 
-        uint8_t *ptr = boot_scratch;
-        uint32_t left = chunk_uncompressed_size;
+        uint8_t *ptr =
+            boot_scratch;
+
+        uint32_t left =
+            chunk_uncompressed_size;
 
         while (left > 0) {
 
@@ -533,17 +733,19 @@ static int boot_internal(
 
             ++ordinal;
 
-            int sent_now = dfu_download_adaptive(
-                b,
-                ptr,
-                chunk_size,
-                (uint32_t)sent,
-                ordinal
-            );
+            int sent_now =
+                dfu_download_adaptive(
+                    b,
+                    ptr,
+                    chunk_size,
+                    (uint32_t)sent,
+                    ordinal
+                );
 
             if (sent_now < 0) {
                 INFO(
-                    "[BOOT] DFU transfer failed offset=0x%08lx rc=%d",
+                    "[BOOT] DFU transfer failed "
+                    "offset=0x%08lx rc=%d",
                     (unsigned long)sent,
                     sent_now
                 );
@@ -552,22 +754,39 @@ static int boot_internal(
             }
 
             ptr += sent_now;
-            left -= (uint32_t)sent_now;
-            sent += (uint32_t)sent_now;
 
-            if (sent - last_log_pos >= PROGRESS_INTERVAL_BYTES) {
-                uint64_t elapsed_us = time_us_64() - t_start;
-                uint32_t kbps = elapsed_us > 0
-                    ? (uint32_t)((uint64_t)sent * 1000u / (elapsed_us / 1000u))
+            left -=
+                (uint32_t)sent_now;
+
+            sent +=
+                (uint32_t)sent_now;
+
+            if (
+                sent - last_log_pos >=
+                PROGRESS_INTERVAL_BYTES
+            ) {
+                uint64_t elapsed_us =
+                    time_us_64() - t_start;
+
+                uint32_t kbps =
+                    elapsed_us > 0
+                    ? (uint32_t)(
+                        (uint64_t)sent * 1000u /
+                        (elapsed_us / 1000u)
+                    )
                     : 0u;
+
                 INFO(
-                    "[BOOT] %lu / %lu bytes  (%u KBps  sz=0x%lx)",
+                    "[BOOT] %lu / %lu bytes "
+                    "(%u KBps sz=0x%lx)",
                     (unsigned long)sent,
                     (unsigned long)uncompressed_size,
                     (unsigned)kbps,
                     (unsigned long)working_transfer_size
                 );
-                last_log_pos = sent;
+
+                last_log_pos =
+                    sent;
             }
         }
     }
@@ -583,13 +802,23 @@ static int boot_internal(
     }
 
     {
-        uint64_t total_us  = time_us_64() - t_start;
-        uint32_t elapsed_ms = (uint32_t)(total_us / 1000u);
-        uint32_t kbps = total_us > 0
-            ? (uint32_t)((uint64_t)sent * 1000u / (total_us / 1000u))
+        uint64_t total_us =
+            time_us_64() - t_start;
+
+        uint32_t elapsed_ms =
+            (uint32_t)(total_us / 1000u);
+
+        uint32_t kbps =
+            total_us > 0
+            ? (uint32_t)(
+                (uint64_t)sent * 1000u /
+                (total_us / 1000u)
+            )
             : 0u;
+
         INFO(
-            "[BOOT] ALL PAYLOAD BYTES SENT: %lu bytes in %lu ms  (%u KBps)",
+            "[BOOT] ALL PAYLOAD BYTES SENT: "
+            "%lu bytes in %lu ms (%u KBps)",
             (unsigned long)sent,
             (unsigned long)elapsed_ms,
             (unsigned)kbps
@@ -601,67 +830,104 @@ static int boot_internal(
         (unsigned long)working_transfer_size
     );
 
-    int finish_rc = dfu_download_finish(b);
+    int finish_rc =
+        dfu_download_finish(b);
 
     INFO(
         "[BOOT] DFU termination rc=%d",
         finish_rc
     );
 
-    int boot_rc = custom_request(
-        b,
-        CUSTOM_BOOT
-    );
+    int boot_rc =
+        custom_request(
+            b,
+            CUSTOM_BOOT
+        );
 
     INFO(
         "[BOOT] CUSTOM_BOOT rc=%d",
         boot_rc
     );
 
-    int abort_rc = custom_request(
-        b,
-        DFU_ABORT
-    );
+    int abort_rc =
+        custom_request(
+            b,
+            DFU_ABORT
+        );
 
     INFO(
         "[BOOT] DFU_ABORT rc=%d",
         abort_rc
     );
 
-    uint64_t total_us = time_us_64() - t_start;
-    uint32_t elapsed_sec = (uint32_t)(total_us / 1000000u);
+    uint64_t total_us =
+        time_us_64() - t_start;
+
+    uint32_t elapsed_sec =
+        (uint32_t)(total_us / 1000000u);
 
     INFO("");
-    INFO("[SUCCESS] ========================================");
-    INFO("[SUCCESS] PAYLOAD DATA TRANSFER COMPLETE");
-    INFO("[SUCCESS] ALL BYTES DELIVERED SUCCESSFULLY");
-    INFO("[SUCCESS] FINAL TRANSFER SIZE: 0x%lx",
-        (unsigned long)working_transfer_size);
-    INFO("[SUCCESS] ========================================");
-    INFO("[SUCCESS] Took %lu seconds to transfer",
-        (unsigned long)elapsed_sec);
-    INFO("[SUCCESS] Device should boot now!");
+
+    INFO(
+        "[SUCCESS] ========================================"
+    );
+
+    INFO(
+        "[SUCCESS] PAYLOAD DATA TRANSFER COMPLETE"
+    );
+
+    INFO(
+        "[SUCCESS] ALL BYTES DELIVERED SUCCESSFULLY"
+    );
+
+    INFO(
+        "[SUCCESS] FINAL TRANSFER SIZE: 0x%lx",
+        (unsigned long)working_transfer_size
+    );
+
+    INFO(
+        "[SUCCESS] ========================================"
+    );
+
+    INFO(
+        "[SUCCESS] Took %lu seconds to transfer",
+        (unsigned long)elapsed_sec
+    );
+
+    INFO(
+        "[SUCCESS] Device should boot now!"
+    );
 
     return 0;
 }
 
 int surreal_boot_run(void)
 {
-    const struct flash_payload_header *fhdr = find_flash_payload(NULL);
-    bool have_flash = (fhdr != NULL);
+    const struct flash_payload_header *fhdr =
+        find_flash_payload(NULL);
+
+    bool have_flash =
+        (fhdr != NULL);
 
 #if BOOTFILE_COUNT > 0
-    bool have_embedded = (bootfiles[0].chunk_count > 0);
+    bool have_embedded =
+        (bootfiles[0].chunk_count > 0);
 #else
     bool have_embedded = false;
 #endif
 
     if (!have_flash && !have_embedded) {
-        INFO("[BOOT] no payload found in flash or firmware image");
+        INFO(
+            "[BOOT] no payload found "
+            "in flash or firmware image"
+        );
+
         return -1;
     }
 
-    INFO("[BOOT] entering USB-host payload transfer stage");
+    INFO(
+        "[BOOT] entering USB-host payload transfer stage"
+    );
 
     return usb_bus_execute(
         boot_internal,
