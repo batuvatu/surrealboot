@@ -105,48 +105,72 @@ detect_os() {
         Darwin)
             HOST_OS="macos"
             PKG_FAMILY="brew"
+
             if [[ "$uname_m" == "arm64" ]]; then
                 HOST_DISTRO="macos-apple-silicon"
             else
                 HOST_DISTRO="macos-intel"
             fi
             ;;
+
         Linux)
             HOST_OS="linux"
+
             if [[ -r /etc/os-release ]]; then
                 # shellcheck disable=SC1091
                 . /etc/os-release
+
                 HOST_DISTRO="${ID:-linux}"
+
                 local like
                 like=" ${ID:-} ${ID_LIKE:-} "
-                if [[ "$like" == *" debian "* || "$like" == *" ubuntu "* ]]; then
+
+                if [[ "$like" == *" debian "* ||
+                      "$like" == *" ubuntu "* ]]; then
+
                     PKG_FAMILY="apt"
-                elif [[ "$like" == *" arch "* || "$HOST_DISTRO" == "arch" || "$HOST_DISTRO" == "manjaro" || "$HOST_DISTRO" == "endeavouros" || "$HOST_DISTRO" == "garuda" || "$HOST_DISTRO" == "cachyos" ]]; then
+
+                elif [[ "$like" == *" arch "* ||
+                      "$HOST_DISTRO" == "arch" ||
+                      "$HOST_DISTRO" == "manjaro" ||
+                      "$HOST_DISTRO" == "endeavouros" ||
+                      "$HOST_DISTRO" == "garuda" ||
+                      "$HOST_DISTRO" == "cachyos" ]]; then
+
                     PKG_FAMILY="pacman"
-                elif [[ "$like" == *" fedora "* || "$like" == *" rhel "* || "$HOST_DISTRO" == "fedora" ]]; then
+
+                elif [[ "$like" == *" fedora "* ||
+                      "$like" == *" rhel "* ||
+                      "$HOST_DISTRO" == "fedora" ]]; then
+
                     PKG_FAMILY="dnf"
                 fi
             fi
 
             if [[ -z "$PKG_FAMILY" ]]; then
+
                 if have_cmd pacman; then
                     PKG_FAMILY="pacman"
                     HOST_DISTRO="${HOST_DISTRO:-arch}"
+
                 elif have_cmd apt-get; then
                     PKG_FAMILY="apt"
                     HOST_DISTRO="${HOST_DISTRO:-debian}"
+
                 elif have_cmd dnf; then
                     PKG_FAMILY="dnf"
                     HOST_DISTRO="${HOST_DISTRO:-fedora}"
                 fi
             fi
             ;;
+
         *)
             die "Unsupported operating system: $uname_s"
             ;;
     esac
 
-    [[ -n "$PKG_FAMILY" ]] || die "Could not detect a supported package manager"
+    [[ -n "$PKG_FAMILY" ]] ||
+        die "Could not detect a supported package manager"
 }
 
 # ============================================================
@@ -156,6 +180,7 @@ detect_os() {
 detect_os
 
 info "Detected host platform"
+
 echo "OS:        $HOST_OS"
 echo "Distro:    $HOST_DISTRO"
 echo "Arch:      $HOST_ARCH"
@@ -166,18 +191,21 @@ echo "Packages:  $PKG_FAMILY"
 # ============================================================
 
 install_brew_deps() {
-    ensure_brew_in_path || die "Homebrew is required on macOS. Install it from https://brew.sh"
+    ensure_brew_in_path ||
+        die "Homebrew is required on macOS. Install it from https://brew.sh"
 
     if ! xcode-select -p >/dev/null 2>&1; then
         echo "Xcode Command Line Tools are missing."
-        echo "Install them with:  xcode-select --install"
+        echo "Install them with: xcode-select --install"
         die "Xcode Command Line Tools are required"
     fi
 
     echo "Using Homebrew at: $(command -v brew)"
+
     brew --version | head -n 1
 
     brew update || true
+
     brew install \
         cmake \
         ninja \
@@ -188,11 +216,6 @@ install_brew_deps() {
         pkg-config \
         libusb
 
-    # Homebrew arm-none-eabi-gcc is a compiler-only formula and does not
-    # ship newlib. Pico SDK links with --specs=nosys.specs, so that
-    # package fails on macOS with:
-    #   cannot read spec file 'nosys.specs'
-    # The official Arm embedded cask includes gcc + newlib + specs.
     brew uninstall --force \
         arm-none-eabi-gcc \
         arm-none-eabi-binutils \
@@ -203,11 +226,11 @@ install_brew_deps() {
 }
 
 install_apt_deps() {
-    have_cmd apt-get || die "apt-get was not found"
+    have_cmd apt-get ||
+        die "apt-get was not found"
 
     run_root apt-get update
 
-    # gcc-arm-none-eabi lives in Ubuntu universe on many releases.
     if have_cmd add-apt-repository; then
         run_root add-apt-repository -y universe || true
         run_root apt-get update || true
@@ -233,7 +256,8 @@ install_apt_deps() {
 }
 
 install_pacman_deps() {
-    have_cmd pacman || die "pacman was not found"
+    have_cmd pacman ||
+        die "pacman was not found"
 
     run_root pacman -Sy --noconfirm --needed \
         cmake \
@@ -253,7 +277,8 @@ install_pacman_deps() {
 }
 
 install_dnf_deps() {
-    have_cmd dnf || die "dnf was not found"
+    have_cmd dnf ||
+        die "dnf was not found"
 
     run_root dnf install -y \
         cmake \
@@ -279,17 +304,30 @@ if [[ "${SKIP_DEPS:-0}" == "1" ]]; then
     echo "SKIP_DEPS=1 set; not installing packages"
 else
     case "$PKG_FAMILY" in
-        brew)   install_brew_deps ;;
-        apt)    install_apt_deps ;;
-        pacman) install_pacman_deps ;;
-        dnf)    install_dnf_deps ;;
-        *)      die "Unsupported package family: $PKG_FAMILY" ;;
+        brew)
+            install_brew_deps
+            ;;
+
+        apt)
+            install_apt_deps
+            ;;
+
+        pacman)
+            install_pacman_deps
+            ;;
+
+        dnf)
+            install_dnf_deps
+            ;;
+
+        *)
+            die "Unsupported package family: $PKG_FAMILY"
+            ;;
     esac
 fi
 
 mkdir -p "$DEPS" "$DIST"
 
-# Homebrew may have been added during install; refresh PATH.
 if [[ "$PKG_FAMILY" == "brew" ]]; then
     ensure_brew_in_path || true
 fi
@@ -301,15 +339,22 @@ fi
 info "Selecting target board"
 
 if [[ -n "${PICO_BOARD:-}" ]]; then
-    printf '%s\n' "${BOARDS[@]}" | grep -Fxq "$PICO_BOARD" \
-        || die "Unsupported PICO_BOARD: $PICO_BOARD"
+
+    printf '%s\n' "${BOARDS[@]}" |
+        grep -Fxq "$PICO_BOARD" ||
+        die "Unsupported PICO_BOARD: $PICO_BOARD"
+
 else
+
     echo "Choose target board:"
+
     select BOARD in "${BOARDS[@]}"; do
+
         if [[ -n "${BOARD:-}" ]]; then
             PICO_BOARD="$BOARD"
             break
         fi
+
     done
 fi
 
@@ -322,32 +367,43 @@ echo "Selected board: $PICO_BOARD"
 info "Locating ARM GNU toolchain"
 
 if [[ "$PKG_FAMILY" == "brew" ]]; then
+
     if have_cmd brew; then
-        LIBUSB_PREFIX="$(brew --prefix libusb 2>/dev/null || true)"
+
+        LIBUSB_PREFIX="$(
+            brew --prefix libusb 2>/dev/null || true
+        )"
+
         if [[ -n "$LIBUSB_PREFIX" ]]; then
             export PKG_CONFIG_PATH="${LIBUSB_PREFIX}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
         fi
     fi
 
-    # Official Arm cask first, then Homebrew bin, then PATH.
     for cand in \
         /Applications/ArmGNUToolchain/*/arm-none-eabi/bin \
         /opt/homebrew/bin \
         /usr/local/bin
     do
         for dir in $cand; do
+
             if [[ -x "$dir/arm-none-eabi-gcc" ]]; then
+
                 case ":$PATH:" in
-                    *":$dir:"*) ;;
-                    *) PATH="$dir:$PATH" ;;
+                    *":$dir:"*)
+                        ;;
+                    *)
+                        PATH="$dir:$PATH"
+                        ;;
                 esac
             fi
         done
     done
+
     export PATH
 fi
 
 pick_working_arm_gcc() {
+
     local cand resolved specs_ok
     local -a found=()
 
@@ -360,7 +416,9 @@ pick_working_arm_gcc() {
         /opt/homebrew/bin/arm-none-eabi-gcc \
         /usr/local/bin/arm-none-eabi-gcc
     do
+
         for resolved in $cand; do
+
             if [[ -x "$resolved" ]]; then
                 found+=("$resolved")
             fi
@@ -368,14 +426,23 @@ pick_working_arm_gcc() {
     done
 
     ARM_GCC=""
+
     for cand in "${found[@]}"; do
+
         specs_ok=0
-        if echo 'int main(void){return 0;}' | \
-            "$cand" --specs=nosys.specs -mcpu=cortex-m33 -mthumb -x c - \
-            -o /tmp/surrealboot-arm-specs-test.elf >/dev/null 2>&1
+
+        if echo 'int main(void){return 0;}' |
+            "$cand" \
+                --specs=nosys.specs \
+                -mcpu=cortex-m33 \
+                -mthumb \
+                -x c - \
+                -o /tmp/surrealboot-arm-specs-test.elf \
+                >/dev/null 2>&1
         then
             specs_ok=1
         fi
+
         rm -f /tmp/surrealboot-arm-specs-test.elf
 
         if [[ "$specs_ok" == "1" ]]; then
@@ -383,45 +450,54 @@ pick_working_arm_gcc() {
             return 0
         fi
 
-        echo "Skipping broken toolchain (missing nosys.specs): $cand"
+        echo \
+            "Skipping broken toolchain (missing nosys.specs): $cand"
     done
 
     return 1
 }
 
-pick_working_arm_gcc \
-    || die "No working arm-none-eabi-gcc with nosys.specs. On macOS run: brew uninstall --force arm-none-eabi-gcc arm-none-eabi-binutils && brew install --cask gcc-arm-embedded"
+pick_working_arm_gcc ||
+    die \
+        "No working arm-none-eabi-gcc with nosys.specs."
 
-ARM_BIN_DIR="$(dirname "$(resolve_path "$ARM_GCC")")"
+ARM_BIN_DIR="$(
+    dirname "$(resolve_path "$ARM_GCC")"
+)"
+
 ARM_GXX="$ARM_BIN_DIR/arm-none-eabi-g++"
 ARM_OBJCOPY="$ARM_BIN_DIR/arm-none-eabi-objcopy"
 ARM_SIZE="$ARM_BIN_DIR/arm-none-eabi-size"
 
-[[ -x "$ARM_GXX" ]] || die "arm-none-eabi-g++ not found next to gcc"
-[[ -x "$ARM_OBJCOPY" ]] || die "arm-none-eabi-objcopy not found next to gcc"
+[[ -x "$ARM_GXX" ]] ||
+    die "arm-none-eabi-g++ not found next to gcc"
 
-# Prefer this toolchain over a leftover Homebrew formula in PATH.
+[[ -x "$ARM_OBJCOPY" ]] ||
+    die "arm-none-eabi-objcopy not found next to gcc"
+
 export PATH="$ARM_BIN_DIR:$PATH"
 export PICO_TOOLCHAIN_PATH="$ARM_BIN_DIR"
 
 echo "ARM GCC:"
 "$ARM_GCC" --version | head -n 1
 
+echo
 echo "ARM toolchain directory:"
 echo "  $ARM_BIN_DIR"
+
+echo
 echo "nosys.specs: OK"
 
 # ============================================================
 # Pico SDK
-#
-# MUST include submodules.
-# This fixes TinyUSB missing.
 # ============================================================
 
 info "Preparing Pico SDK $PICO_SDK_VERSION"
 
 if [[ ! -d "$PICO_SDK/.git" ]]; then
-    echo "Pico SDK not found. Cloning with recursive submodules..."
+
+    echo \
+        "Pico SDK not found. Cloning with recursive submodules..."
 
     rm -rf "$PICO_SDK"
 
@@ -431,16 +507,14 @@ if [[ ! -d "$PICO_SDK/.git" ]]; then
         --recurse-submodules \
         https://github.com/raspberrypi/pico-sdk.git \
         "$PICO_SDK"
+
 else
+
     echo "Using cached Pico SDK:"
     echo "  $PICO_SDK"
 
-    pushd "$PICO_SDK" >/dev/null
-
-    popd >/dev/null
 fi
 
-# Verify TinyUSB really exists.
 TINYUSB_CMAKE="$PICO_SDK/src/rp2_common/tinyusb/CMakeLists.txt"
 TINYUSB_SRC="$PICO_SDK/lib/tinyusb/src/tusb.c"
 
@@ -449,17 +523,20 @@ if [[ ! -f "$TINYUSB_CMAKE" ]]; then
 fi
 
 if [[ ! -f "$TINYUSB_SRC" ]]; then
+
     echo
     echo "TinyUSB source is missing. Repairing submodules..."
 
     pushd "$PICO_SDK" >/dev/null
+
     git submodule sync --recursive
     git submodule update --init --recursive
+
     popd >/dev/null
 fi
 
-[[ -f "$TINYUSB_SRC" ]] \
-    || die "TinyUSB is still missing after submodule repair"
+[[ -f "$TINYUSB_SRC" ]] ||
+    die "TinyUSB is still missing after submodule repair"
 
 export PICO_SDK_PATH="$PICO_SDK"
 
@@ -474,6 +551,7 @@ echo "PICO_TOOLCHAIN_PATH=$PICO_TOOLCHAIN_PATH"
 info "Preparing USBLiter8 upstream source"
 
 if [[ ! -d "$UPSTREAM_CACHE/.git" ]]; then
+
     echo "Cloning upstream source from:"
     echo "  $USBLITER8_REPO"
 
@@ -482,9 +560,12 @@ if [[ ! -d "$UPSTREAM_CACHE/.git" ]]; then
         --no-checkout \
         "$USBLITER8_REPO" \
         "$UPSTREAM_CACHE"
+
 else
+
     echo "Using cached upstream source:"
     echo "  $UPSTREAM_CACHE"
+
 fi
 
 pushd "$UPSTREAM_CACHE" >/dev/null
@@ -502,8 +583,8 @@ echo
 echo "USBLiter8 HEAD:"
 git -C "$UPSTREAM_CACHE" rev-parse HEAD
 
-[[ "$(git -C "$UPSTREAM_CACHE" rev-parse HEAD)" == "$USBLITER8_REF" ]] \
-    || die "USBLiter8 commit mismatch"
+[[ "$(git -C "$UPSTREAM_CACHE" rev-parse HEAD)" == "$USBLITER8_REF" ]] ||
+    die "USBLiter8 commit mismatch"
 
 # ============================================================
 # Prepare source tree
@@ -516,8 +597,86 @@ mkdir -p "$SRC"
 
 cp -a "$UPSTREAM_CACHE/." "$SRC/"
 
-# Directly continue to payload when device is already PWNED.
-# Also make Recovery mode devices return -2 (retry) instead of -1 (fatal).
+# ============================================================
+# Patch PIO USB control transfer length
+#
+# IMPORTANT:
+#
+# pio_usb/src/usb_definitions.h declares:
+#
+#     uint8_t tx_length;
+#
+# while pio_usb_ll_transfer_start() takes:
+#
+#     uint16_t buflen
+#
+# A uint8_t control-pipe length silently truncates 0x100 and 0x200.
+#
+# This is the direct reason why the experimental 0x200 path currently
+# times out/stalls before reaching the actual USB wire transfer.
+#
+# Change only the control-pipe packet length field to uint16_t.
+# Do not touch endpoint packet buffers or the low-level packet encoder:
+# individual USB full-speed packets remain <= 64 bytes and are handled
+# by the existing PIO USB implementation.
+# ============================================================
+
+info "Patching PIO USB control transfer length"
+
+PIO_USB_DEFINITIONS="$SRC/pio_usb/src/usb_definitions.h"
+
+[[ -f "$PIO_USB_DEFINITIONS" ]] ||
+    die \
+        "Missing PIO USB definitions: $PIO_USB_DEFINITIONS"
+
+python3 - "$PIO_USB_DEFINITIONS" <<'PYPIO'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+old = """typedef struct {
+  uint8_t *tx_address;
+  uint8_t tx_length;
+} packet_info_t;
+"""
+
+new = """typedef struct {
+  uint8_t *tx_address;
+  uint16_t tx_length;
+} packet_info_t;
+"""
+
+if old not in text:
+    raise SystemExit(
+        "Could not find expected packet_info_t definition"
+    )
+
+text = text.replace(old, new, 1)
+
+path.write_text(text)
+PYPIO
+
+grep -A4 -B1 \
+    "typedef struct {" \
+    "$PIO_USB_DEFINITIONS" |
+    grep -q "uint16_t tx_length" ||
+    die "PIO USB tx_length patch verification failed"
+
+echo
+echo "PIO USB control transfer length:"
+grep -A3 \
+    "typedef struct {" \
+    "$PIO_USB_DEFINITIONS" |
+    head -n 4
+
+# ============================================================
+# Patch exploit behavior
+# ============================================================
+
+info "Patching exploit runtime behavior"
+
 python3 - "$SRC/exploit.c" <<'PYEXPLOIT'
 from pathlib import Path
 import sys
@@ -525,7 +684,8 @@ import sys
 p = Path(sys.argv[1])
 s = p.read_text()
 
-# --- Patch 1: already-PWNED returns 1 (proceed to payload) ---
+# --- Patch 1: already-PWNED returns 1 ---
+
 old = """    if (pwnd) {
         INFO("already PWNED!");
         return -2;
@@ -539,19 +699,13 @@ new = """    if (pwnd) {
 """
 
 if old not in s:
-    raise SystemExit("Could not find PWNED block in exploit.c")
+    raise SystemExit(
+        "Could not find PWNED block in exploit.c"
+    )
 
 s = s.replace(old, new, 1)
 
-# --- Patch 2: Recovery mode devices return -2 (retry) instead of -1 (fatal) ---
-# Original code:
-#   if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227) {
-#       INFO("VID:0x%04X PID:0x%04X is not an Apple DFU device", ...);
-#       return -1;
-#   }
-#
-# Replace with a check that returns -2 for Recovery mode (retry/skip)
-# so the exploit loop treats it as "no device yet" rather than fatal.
+# --- Patch 2: Recovery mode ---
 
 old_vid = '''    if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227) {
         INFO("VID:0x%04X PID:0x%04X is not an Apple DFU device", dev_desc.idVendor, dev_desc.idProduct);
@@ -559,49 +713,54 @@ old_vid = '''    if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227)
     }'''
 
 new_vid = '''    if (dev_desc.idVendor == 0x5AC &&
-        dev_desc.idProduct >= 0x1280 && dev_desc.idProduct <= 0x1283) {
+        dev_desc.idProduct >= 0x1280 &&
+        dev_desc.idProduct <= 0x1283) {
         INFO("Apple Recovery device detected (PID=0x%04X), triggering DFU helper", dev_desc.idProduct);
         return -3;
     }
-    if (dev_desc.idVendor != 0x5AC || dev_desc.idProduct != 0x1227) {
-        /* Non-DFU or non-Apple device: return -2 so main loop retries cleanly without fatal red */
+
+    if (dev_desc.idVendor != 0x5AC ||
+        dev_desc.idProduct != 0x1227) {
         return -2;
     }'''
 
 if old_vid not in s:
-    raise SystemExit("Could not find VID/PID check in exploit.c")
+    raise SystemExit(
+        "Could not find VID/PID check in exploit.c"
+    )
 
 s = s.replace(old_vid, new_vid, 1)
 
 p.write_text(s)
 PYEXPLOIT
 
+# ============================================================
+# Replace custom source files
+# ============================================================
 
-# Replace/add our custom files.
-cp "$ROOT/CMakeLists.txt"   "$SRC/CMakeLists.txt"
-cp "$ROOT/surreal_boot.c"   "$SRC/surreal_boot.c"
-cp "$ROOT/surreal_boot.h"   "$SRC/surreal_boot.h"
-cp "$ROOT/dfu_helper.c"     "$SRC/dfu_helper.c"
-cp "$ROOT/dfu_helper.h"     "$SRC/dfu_helper.h"
-cp "$ROOT/serial_flasher.c" "$SRC/serial_flasher.c"
-cp "$ROOT/serial_flasher.h" "$SRC/serial_flasher.h"
+cp "$ROOT/CMakeLists.txt" \
+    "$SRC/CMakeLists.txt"
+
+cp "$ROOT/surreal_boot.c" \
+    "$SRC/surreal_boot.c"
+
+cp "$ROOT/surreal_boot.h" \
+    "$SRC/surreal_boot.h"
+
+cp "$ROOT/dfu_helper.c" \
+    "$SRC/dfu_helper.c"
+
+cp "$ROOT/dfu_helper.h" \
+    "$SRC/dfu_helper.h"
+
+cp "$ROOT/serial_flasher.c" \
+    "$SRC/serial_flasher.c"
+
+cp "$ROOT/serial_flasher.h" \
+    "$SRC/serial_flasher.h"
 
 # ============================================================
 # Patch LED states
-#
-# Existing upstream LED states:
-#   BOOTING
-#   IDLE
-#   RUNNING
-#   SUCCESS
-#   ERROR
-#
-# Add:
-#   BOOT_PAYLOAD
-#   BOOT_SUCCESS
-#   DFU_HOLD_BUTTONS   (magenta/purple)
-#   DFU_RELEASE_POWER  (cyan)
-#   DFU_WAITING        (white blink)
 # ============================================================
 
 info "Patching LED states"
@@ -616,9 +775,11 @@ source = Path(sys.argv[2])
 h = header.read_text()
 
 if "LED_STATE_BOOT_PAYLOAD" not in h:
+
     old = """    LED_STATE_SUCCESS,
     LED_STATE_ERROR
 """
+
     new = """    LED_STATE_SUCCESS,
     LED_STATE_ERROR,
     LED_STATE_BOOT_PAYLOAD,
@@ -627,8 +788,12 @@ if "LED_STATE_BOOT_PAYLOAD" not in h:
     LED_STATE_DFU_RELEASE_POWER,
     LED_STATE_DFU_WAITING
 """
+
     if old not in h:
-        raise SystemExit("Could not find LED state enum")
+        raise SystemExit(
+            "Could not find LED state enum"
+        )
+
     h = h.replace(old, new, 1)
 
 header.write_text(h)
@@ -636,6 +801,7 @@ header.write_text(h)
 c = source.read_text()
 
 if "case LED_STATE_BOOT_PAYLOAD" not in c:
+
     old = """        case LED_STATE_ERROR: {
             led_set_color(RED);
             led_set_blinking(0);
@@ -663,58 +829,58 @@ if "case LED_STATE_BOOT_PAYLOAD" not in c:
 """
 
     if old not in c:
-        raise SystemExit("Could not find LED_STATE_ERROR block")
+        raise SystemExit(
+            "Could not find LED_STATE_ERROR block"
+        )
 
     c = c.replace(old, new, 1)
 
-# ---- Add DFU helper LED colours ----
+# Add MAGENTA/CYAN/WHITE definitions.
 
-# Define new colours (MAGENTA, CYAN, WHITE) alongside existing ones.
-# NeoPixel path:
-neo_anchor = "#define RED"
-if neo_anchor in c and "MAGENTA" not in c:
-    # Find the RED define line in the NeoPixel section
-    red_line_neo = None
+if "MAGENTA" not in c:
+
     for line in c.splitlines():
-        if line.strip().startswith("#define RED") and "NEOPIXEL_RGB" in line:
-            red_line_neo = line
-            break
 
-    if red_line_neo:
-        c = c.replace(
-            red_line_neo,
-            red_line_neo + "\n"
-            "#define MAGENTA     NEOPIXEL_RGB(18, 0, 18)\n"
-            "#define CYAN        NEOPIXEL_RGB(0, 10, 18)\n"
-            "#define WHITE       NEOPIXEL_RGB(10, 10, 10)",
-            1
-        )
-
-# PWM path:
-for line in c.splitlines():
-    if line.strip().startswith("#define RED") and "PWM_RGB" in line:
-        red_line_pwm = line
-        if "MAGENTA" not in c or "PWM_RGB" not in c.split(red_line_pwm, 1)[-1][:200]:
+        if (
+            line.strip().startswith("#define RED") and
+            "NEOPIXEL_RGB" in line
+        ):
             c = c.replace(
-                red_line_pwm,
-                red_line_pwm + "\n"
-                "#define MAGENTA     PWM_RGB(120, 0, 120)\n"
-                "#define CYAN        PWM_RGB(0, 120, 120)\n"
-                "#define WHITE       PWM_RGB(100, 100, 100)",
+                line,
+                line + "\n"
+                "#define MAGENTA     NEOPIXEL_RGB(18, 0, 18)\n"
+                "#define CYAN        NEOPIXEL_RGB(0, 10, 18)\n"
+                "#define WHITE       NEOPIXEL_RGB(10, 10, 10)",
                 1
             )
+            break
+
+for line in c.splitlines():
+
+    if (
+        line.strip().startswith("#define RED") and
+        "PWM_RGB" in line
+    ):
+        c = c.replace(
+            line,
+            line + "\n"
+            "#define MAGENTA     PWM_RGB(120, 0, 120)\n"
+            "#define CYAN        PWM_RGB(0, 120, 120)\n"
+            "#define WHITE       PWM_RGB(100, 100, 100)",
+            1
+        )
         break
 
-# Add DFU helper state cases to led_set_state().
-# Insert after BOOT_SUCCESS case.
-boot_success_block = """        case LED_STATE_BOOT_SUCCESS: {
+if "LED_STATE_DFU_HOLD_BUTTONS" not in c:
+
+    boot_success_block = """        case LED_STATE_BOOT_SUCCESS: {
             led_set_color(GREEN);
             led_set_blinking(0);
             break;
         }
 """
 
-dfu_led_states = """        case LED_STATE_BOOT_SUCCESS: {
+    dfu_states = """        case LED_STATE_BOOT_SUCCESS: {
             led_set_color(GREEN);
             led_set_blinking(0);
             break;
@@ -739,33 +905,53 @@ dfu_led_states = """        case LED_STATE_BOOT_SUCCESS: {
         }
 """
 
-if boot_success_block in c and "LED_STATE_DFU_HOLD_BUTTONS" not in c:
-    c = c.replace(boot_success_block, dfu_led_states, 1)
+    if boot_success_block not in c:
+        raise SystemExit(
+            "Could not find LED_STATE_BOOT_SUCCESS block"
+        )
+
+    c = c.replace(
+        boot_success_block,
+        dfu_states,
+        1
+    )
 
 source.write_text(c)
 PYLED
 
 # ============================================================
-# Patch usb.h and usb.c for non-blocking device detection
+# Patch usb.h / usb.c
 # ============================================================
 
-info "Patching usb.h and usb.c for non-blocking connection polling"
+info "Patching USB connection polling"
 
 python3 - "$SRC/usb.h" "$SRC/usb.c" <<'PYUSB'
 from pathlib import Path
 import sys
 
 h_path = Path(sys.argv[1])
-h_text = h_path.read_text()
-if 'usb_bus_is_connected' not in h_text:
-    h_text += '\nbool usb_bus_is_connected(void);\n'
-    h_path.write_text(h_text)
-
 c_path = Path(sys.argv[2])
-c_text = c_path.read_text()
-if 'usb_bus_is_connected' not in c_text:
-    c_text += '\nbool usb_bus_is_connected(void) {\n    return (gBus.root != NULL && gBus.root->connected);\n}\n'
-    c_path.write_text(c_text)
+
+h = h_path.read_text()
+
+if "usb_bus_is_connected" not in h:
+    h += "\nbool usb_bus_is_connected(void);\n"
+
+h_path.write_text(h)
+
+c = c_path.read_text()
+
+if "usb_bus_is_connected" not in c:
+    c += """
+bool usb_bus_is_connected(void) {
+    return (
+        gBus.root != NULL &&
+        gBus.root->connected
+    );
+}
+"""
+
+c_path.write_text(c)
 PYUSB
 
 # ============================================================
@@ -781,19 +967,24 @@ import sys
 path = Path(sys.argv[1])
 s = path.read_text()
 
-# --- Add includes ---
-
 if '#include "surreal_boot.h"' not in s:
+
     marker = '#include "log.h"'
+
     if marker not in s:
-        raise SystemExit('Could not find log.h include')
+        raise SystemExit(
+            "Could not find log.h include"
+        )
+
     s = s.replace(
         marker,
-        marker + '\n#include "surreal_boot.h"\n#include "dfu_helper.h"\n#include "serial_flasher.h"',
+        marker +
+        '\n#include "surreal_boot.h"' +
+        '\n#include "dfu_helper.h"' +
+        '\n#include "serial_flasher.h"',
         1
     )
 
-# --- Patch fatal_failure to keep servicing serial flasher ---
 old_fatal_spin = """    while (1) {
         sleep_ms(100);
     }"""
@@ -804,9 +995,12 @@ new_fatal_spin = """    while (1) {
     }"""
 
 if old_fatal_spin in s:
-    s = s.replace(old_fatal_spin, new_fatal_spin)
+    s = s.replace(
+        old_fatal_spin,
+        new_fatal_spin,
+        1
+    )
 
-# --- Patch do_auto for dynamic Recovery DFU helper and serial flasher ---
 old_auto = """void do_auto(void) {
     while (true) {
         int ret = exploit_run();"""
@@ -814,6 +1008,7 @@ old_auto = """void do_auto(void) {
 new_auto = """void do_auto(void) {
     while (true) {
         serial_flasher_check(10);
+
         int ret = exploit_run();
 
         if (ret == -3) {
@@ -824,45 +1019,74 @@ new_auto = """void do_auto(void) {
         }"""
 
 if old_auto not in s:
-    raise SystemExit('Could not find do_auto() while loop in main.c')
+    raise SystemExit(
+        "Could not find do_auto() while loop"
+    )
 
-s = s.replace(old_auto, new_auto, 1)
+s = s.replace(
+    old_auto,
+    new_auto,
+    1
+)
 
-# --- Patch exploit success to send boot payload ---
 old = """        /* it all went well then */
         break;
 """
 
-new = """        /* exploit succeeded; now send embedded boot payload */
+new = """        /*
+         * exploit succeeded; now send embedded boot payload
+         */
         led_set_state(LED_STATE_SUCCESS);
 
         printf("\\n");
-        printf("[BOOT] exploit succeeded; starting embedded boot payload transfer\\n");
+        printf(
+            "[BOOT] exploit succeeded; "
+            "starting embedded boot payload transfer\\n"
+        );
 
-        led_set_state(LED_STATE_BOOT_PAYLOAD);
+        led_set_state(
+            LED_STATE_BOOT_PAYLOAD
+        );
 
-        int boot_rc = surreal_boot_run();
+        int boot_rc =
+            surreal_boot_run();
 
         if (boot_rc != 0) {
-            printf("[BOOT] payload transfer FAILED rc=%d\\n", boot_rc);
-            led_set_state(LED_STATE_ERROR);
+            printf(
+                "[BOOT] payload transfer FAILED rc=%d\\n",
+                boot_rc
+            );
+
+            led_set_state(
+                LED_STATE_ERROR
+            );
+
             fatal_failure();
         }
 
-        led_set_state(LED_STATE_BOOT_SUCCESS);
+        led_set_state(
+            LED_STATE_BOOT_SUCCESS
+        );
 
-        printf("[BOOT] payload transfer SUCCESS\\n");
-        printf("[BOOT] device should now transition away from DFU\\n");
+        printf(
+            "[BOOT] payload transfer SUCCESS\\n"
+        );
+
+        printf(
+            "[BOOT] device should now transition "
+            "away from DFU\\n"
+        );
 
         break;
 """
 
 if old not in s:
-    raise SystemExit("Could not find exploit success point in main.c")
+    raise SystemExit(
+        "Could not find exploit success point"
+    )
 
 s = s.replace(old, new, 1)
 
-# --- Replace blocking main() loop with non-blocking polling ---
 old_main_tail = """    usb_start();
     usb_bus_init();
     usb_bus_wait_for_device();
@@ -881,63 +1105,78 @@ new_main_tail = """    usb_start();
     do_auto();"""
 
 if old_main_tail in s:
-    s = s.replace(old_main_tail, new_main_tail, 1)
+    s = s.replace(
+        old_main_tail,
+        new_main_tail,
+        1
+    )
 
 path.write_text(s)
 PYMAIN
 
 # ============================================================
-# Validate ibss
+# Validate embedded payload directory
 # ============================================================
 
 info "Checking embedded ibss"
 
 BOOTFILES_DIR="$ROOT/ibss"
 
-[[ -d "$BOOTFILES_DIR" ]] \
-    || die "Missing ./ibss directory"
+[[ -d "$BOOTFILES_DIR" ]] ||
+    die "Missing ./ibss directory"
 
 BOOTFILES=()
+
 while IFS= read -r file; do
-    [[ -n "$file" ]] && BOOTFILES+=("$file")
+    [[ -n "$file" ]] &&
+        BOOTFILES+=("$file")
 done < <(
     find "$BOOTFILES_DIR" \
         -type f \
         -name "*.boot" \
-        -print \
-        | sort
+        -print |
+        sort
 )
 
 if [[ "${#BOOTFILES[@]}" -eq 0 ]]; then
+
     echo "Notice: No .boot files found in ./ibss"
-    echo "Building universal base firmware (will load payload dynamically from flash at 0x10040000)"
+    echo \
+        "Building universal base firmware " \
+        "(payload loaded dynamically from flash)"
+
     TOTAL_BYTES=0
+
 else
 
-TOTAL_BYTES=0
+    TOTAL_BYTES=0
 
-echo "Found ${#BOOTFILES[@]} boot payload(s):"
+    echo \
+        "Found ${#BOOTFILES[@]} boot payload(s):"
 
-for file in "${BOOTFILES[@]}"; do
-    size="$(file_size "$file")"
-    TOTAL_BYTES=$((TOTAL_BYTES + size))
+    for file in "${BOOTFILES[@]}"; do
 
-    echo "  ${file#"$ROOT/ibss"/} $size bytes"
-done
+        size="$(file_size "$file")"
 
-echo
-echo "Total boot payload bytes: $TOTAL_BYTES"
+        TOTAL_BYTES=$(
+            (
+                TOTAL_BYTES +
+                size
+            )
+        )
+
+        echo \
+            "  ${file#"$ROOT/ibss"/} $size bytes"
+    done
+
+    echo
+    echo \
+        "Total boot payload bytes: $TOTAL_BYTES"
+
 fi
 
 # ============================================================
-# Generate embedded payloads
-#
-# IMPORTANT:
-# embed_bootfiles.py requires THREE arguments:
-#
-#   ibss directory
-#   output .c
-#   output .h
+# Generate embedded payload
 # ============================================================
 
 info "Generating embedded boot payload"
@@ -949,19 +1188,19 @@ mkdir -p "$GEN_DIR"
 
 EMBED_SCRIPT="$ROOT/tools/embed_bootfiles.py"
 
-[[ -f "$EMBED_SCRIPT" ]] \
-    || die "Missing tools/embed_bootfiles.py"
+[[ -f "$EMBED_SCRIPT" ]] ||
+    die "Missing tools/embed_bootfiles.py"
 
 python3 "$EMBED_SCRIPT" \
     "$ROOT/ibss" \
     "$GEN_DIR/bootfiles_data.c" \
     "$GEN_DIR/bootfiles_data.h"
 
-[[ -s "$GEN_DIR/bootfiles_data.c" ]] \
-    || die "Generated bootfiles_data.c is empty"
+[[ -s "$GEN_DIR/bootfiles_data.c" ]] ||
+    die "Generated bootfiles_data.c is empty"
 
-[[ -s "$GEN_DIR/bootfiles_data.h" ]] \
-    || die "Generated bootfiles_data.h is empty"
+[[ -s "$GEN_DIR/bootfiles_data.h" ]] ||
+    die "Generated bootfiles_data.h is empty"
 
 echo
 echo "Generated:"
@@ -976,9 +1215,14 @@ info "Configuring CMake"
 
 rm -rf "$BUILD"
 
-have_cmd cmake || die "cmake not found"
-have_cmd ninja || die "ninja not found"
-have_cmd python3 || die "python3 not found"
+have_cmd cmake ||
+    die "cmake not found"
+
+have_cmd ninja ||
+    die "ninja not found"
+
+have_cmd python3 ||
+    die "python3 not found"
 
 cmake \
     -S "$SRC" \
@@ -991,7 +1235,8 @@ cmake \
 
 info "Building"
 
-cmake --build "$BUILD" --parallel "$(cpu_jobs)"
+cmake --build "$BUILD" \
+    --parallel "$(cpu_jobs)"
 
 # ============================================================
 # Verify result
@@ -1000,11 +1245,13 @@ cmake --build "$BUILD" --parallel "$(cpu_jobs)"
 UF2="$BUILD/usbliter8.uf2"
 ELF="$BUILD/usbliter8.elf"
 
-[[ -f "$UF2" ]] \
-    || die "Build finished but usbliter8.uf2 was not produced"
+[[ -f "$UF2" ]] ||
+    die \
+        "Build finished but usbliter8.uf2 was not produced"
 
-[[ -f "$ELF" ]] \
-    || die "Build finished but usbliter8.elf was not produced"
+[[ -f "$ELF" ]] ||
+    die \
+        "Build finished but usbliter8.elf was not produced"
 
 mkdir -p "$DIST"
 
@@ -1030,19 +1277,35 @@ echo
 echo "============================================================"
 echo "BUILD SUCCESS"
 echo "============================================================"
+
 echo
 echo "Host:"
 echo "  $HOST_DISTRO ($HOST_ARCH)"
+
 echo
 echo "Board:"
 echo "  $PICO_BOARD"
+
+echo
+echo "PIO USB:"
+echo "  control-pipe tx_length: uint16_t"
+
+echo
+echo "Experimental DFU fast path:"
+echo "  initial transfer: 0x200"
+echo "  fallback:         0x100 -> 0x80 -> 0x40"
+
 echo
 echo "UF2:"
 echo "  $OUTPUT"
+
 echo
 echo "Embedded payloads:"
+
 for file in "${BOOTFILES[@]}"; do
-    echo "  ${file#"$ROOT/ibss"/}"
+    echo \
+        "  ${file#"$ROOT/ibss"/}"
 done
+
 echo
 echo "DONE: $OUTPUT"
