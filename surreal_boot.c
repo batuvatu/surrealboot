@@ -25,7 +25,7 @@
  */
 
 #ifndef SURREALBOOT_INITIAL_TRANSFER_SIZE
-#define SURREALBOOT_INITIAL_TRANSFER_SIZE 0x200u
+#define SURREALBOOT_INITIAL_TRANSFER_SIZE 0x400u
 #endif
 
 #ifndef SURREALBOOT_MIN_TRANSFER_SIZE
@@ -466,10 +466,6 @@ static int __not_in_flash_func(lz4_decompress_block)(
  * ============================================================
  * CORE 0 WORKER
  * ============================================================
- *
- * This is intentionally cooperative because Core 0 is also the
- * main application core. While Core 1 runs the USB worker,
- * Core 0 continuously enters this worker from usb.c.
  */
 
 void surreal_boot_pump(void)
@@ -614,11 +610,6 @@ static int wait_decompression(void)
 {
     while (!core0_job_done) {
 
-        /*
-         * Core 1 normally calls this function while Core 0 is
-         * running the worker. This path is retained for safety
-         * if the call ever happens on Core 0.
-         */
         surreal_boot_pump();
 
         tight_loop_contents();
@@ -678,19 +669,15 @@ static int dfu_download_chunk(
             CTRL_TIMEOUT_MS
         );
 
+    /*
+     * Successful packets are silent.
+     * Only errors are logged.
+     */
     if (rc != 0) {
 
         INFO(
             "[DFU] FAILED rc=%d offset=0x%08lx len=0x%04x",
             rc,
-            (unsigned long)offset,
-            (unsigned)len
-        );
-
-    } else {
-
-        INFO(
-            "[DFU] sent offset=0x%08lx len=0x%04x",
             (unsigned long)offset,
             (unsigned)len
         );
@@ -762,9 +749,6 @@ static int dfu_download_adaptive(
             return rc;
         }
 
-        /*
-         * Re-open EP0 before retrying.
-         */
         INFO(
             "[DFU] resetting USB bus before retry"
         );
@@ -915,6 +899,7 @@ find_flash_payload(
         if (
             hdr->magic ==
             FLASH_PAYLOAD_MAGIC &&
+
             hdr->chunk_count > 0
         ) {
 
@@ -993,6 +978,9 @@ static int send_decompressed_buffer(
         *sent +=
             (uint32_t)sent_now;
 
+        /*
+         * Only print periodic progress.
+         */
         if (
             *sent - *last_log_pos >=
             PROGRESS_INTERVAL_BYTES
@@ -1122,6 +1110,7 @@ static int boot_internal(
                 fchunks +
                 chunk_count
             );
+
     }
 
 #if BOOTFILE_COUNT > 0
@@ -1337,6 +1326,7 @@ static int boot_internal(
     /*
      * Core 0 decompresses the first block.
      */
+
     if (
         wait_decompression() !=
         0
@@ -1398,6 +1388,7 @@ static int boot_internal(
         /*
          * Submit the next decode job BEFORE USB transfer.
          */
+
         if (
             next_block <
             chunk_count
@@ -1474,6 +1465,7 @@ static int boot_internal(
          * Core 1 sends current buffer while Core 0 decodes
          * next_buffer.
          */
+
         int rc =
             send_decompressed_buffer(
                 b,
@@ -1495,6 +1487,7 @@ static int boot_internal(
          * Wait for the next decode only after USB had a chance
          * to run in parallel.
          */
+
         if (next_submitted) {
 
             if (
