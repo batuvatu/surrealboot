@@ -1157,13 +1157,12 @@ else
     for file in "${BOOTFILES[@]}"; do
 
         size="$(file_size "$file")"
-
-        TOTAL_BYTES=$(
-            (
-                TOTAL_BYTES +
-                size
-            )
-        )
+TOTAL_BYTES=$(
+    (
+        TOTAL_BYTES +
+        size
+    )
+)
 
         echo \
             "  ${file#"$ROOT/ibss"/} $size bytes"
