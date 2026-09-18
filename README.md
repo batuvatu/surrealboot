@@ -33,7 +33,11 @@ When powered on, connect your iPhone to the board's USB host port with a Lightni
 4. Upload your device's iBSS.boot file. this file can be found on the boot folder inside the surrealra1n folder.
 5. Click the flash button to flash the boot payload over Web Serial.
 
+## Known issues
+Issue: I am getting serial port errors on linux.
+Fix: Your user is likely not added to the dialout group, or ModemManager is active. ModemManager is known to interfere with serial connections, and you need to be added to the dialout group to send commands to serial ports on linux. 
 
+Please report other issues you find with as much information as possible, and we would be happy to fix the issue or add the workaround here!
 
 ## Supported iDevices
 
