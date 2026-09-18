@@ -21,9 +21,30 @@ class SurrealSerialFlasher {
 
         this.port = await navigator.serial.requestPort();
 
-        await this.port.open({
-            baudRate: 115200
-        });
+        try {
+            await this.port.open({
+                baudRate: 115200
+            });
+        } catch (openErr) {
+            this.port = null;
+
+            // On Linux, "Failed to open serial port" almost always means the
+            // user lacks permission on /dev/ttyACM*.  Provide an actionable
+            // message instead of the raw DOMException.
+            if (openErr.message && openErr.message.includes('Failed to open serial port')) {
+                const isLinux = navigator.userAgent.includes('Linux');
+                if (isLinux) {
+                    throw new Error(
+                        'Could not open the serial port — permission denied.\n\n' +
+                        'On Linux, your user must be in the "dialout" group.\n' +
+                        'Run:  sudo usermod -aG dialout $USER\n' +
+                        'Then log out and log back in (or reboot) for the change to take effect.'
+                    );
+                }
+            }
+
+            throw openErr;
+        }
 
         // Improve USB CDC/Web Serial compatibility on Chromium/Linux.
         // Some serial stacks need explicit control-line state after opening.
