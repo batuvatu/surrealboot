@@ -35,7 +35,7 @@ class SurrealSerialFlasher {
                 const isLinux = navigator.userAgent.includes('Linux');
                 if (isLinux) {
                     throw new Error(
-                        'Could not open the serial port — permission denied.\n\n' +
+                        'Could not open the serial port: permission denied.\n\n' +
                         'On Linux, your user must be in the "dialout" group.\n' +
                         'Run:  sudo usermod -aG dialout $USER\n' +
                         'Then log out and log back in (or reboot) for the change to take effect.'
