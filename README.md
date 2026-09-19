@@ -38,6 +38,12 @@ Issue: Getting serial port errors on linux
 
 Fix: Your user is likely not added to the dialout group, or ModemManager is active. ModemManager is known to interfere with serial connections, and you need to be added to the dialout group to send commands to serial ports on linux. 
 
+Issue: The program does not detect my iPhone if i plug it in after powering on the board.
+
+Fix: Due to a hardware limitation on waveshare RP2350 USB-A boards, this is unfixable. the workaround to this is plugging the iPhone to the board first, and then plug the RP2350 board to power. 
+
+---
+
 Please report other issues you find with as much information as possible, and we would be happy to fix the issue or add the workaround here!
 
 ## Supported iDevices
